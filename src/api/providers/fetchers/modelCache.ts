@@ -87,8 +87,8 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getVercelAiGatewayModels()
 			break
 		case "roo": {
-			// Roo Code Cloud provider requires baseUrl and optional apiKey
-			const rooBaseUrl = options.baseUrl ?? process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy"
+			// Moo Code Cloud provider requires baseUrl and optional apiKey
+			const rooBaseUrl = options.baseUrl ?? process.env.ROO_CODE_PROVIDER_URL ?? ""
 			models = await getRooModels(rooBaseUrl, options.apiKey)
 			break
 		}

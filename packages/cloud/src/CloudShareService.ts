@@ -1,6 +1,5 @@
 import type { SettingsService, ShareResponse, ShareVisibility } from "@roo-code/types"
 
-import { importVscode } from "./importVscode.js"
 import type { CloudAPI } from "./CloudAPI.js"
 
 export class CloudShareService {
@@ -14,48 +13,20 @@ export class CloudShareService {
 		this.log = log || console.log
 	}
 
-	async shareTask(taskId: string, visibility: ShareVisibility = "organization"): Promise<ShareResponse> {
-		try {
-			const response = await this.cloudAPI.shareTask(taskId, visibility)
+	// Cloud features disabled — all methods are no-ops.
 
-			if (response.success && response.shareUrl) {
-				const vscode = await importVscode()
-
-				if (vscode?.env?.clipboard?.writeText) {
-					try {
-						await vscode.env.clipboard.writeText(response.shareUrl)
-					} catch (copyErr) {
-						this.log("[ShareService] Clipboard write failed (non-fatal):", copyErr)
-					}
-				} else {
-					this.log("[ShareService] VS Code clipboard unavailable; running outside extension host.")
-				}
-			}
-
-			return response
-		} catch (error) {
-			this.log("[ShareService] Error sharing task:", error)
-			throw error
-		}
+	async shareTask(_taskId: string, _visibility: ShareVisibility = "organization"): Promise<ShareResponse> {
+		this.log("[ShareService] Cloud features disabled — shareTask is a no-op")
+		throw new Error("Cloud features are disabled in this fork")
 	}
 
 	async canShareTask(): Promise<boolean> {
-		try {
-			return !!this.settingsService.getSettings()?.cloudSettings?.enableTaskSharing
-		} catch (error) {
-			this.log("[ShareService] Error checking if task can be shared:", error)
-			return false
-		}
+		// Cloud features disabled — sharing is not available
+		return false
 	}
 
 	async canSharePublicly(): Promise<boolean> {
-		try {
-			const cloudSettings = this.settingsService.getSettings()?.cloudSettings
-			// Public sharing requires both enableTaskSharing AND allowPublicTaskSharing to be true
-			return !!cloudSettings?.enableTaskSharing && cloudSettings?.allowPublicTaskSharing !== false
-		} catch (error) {
-			this.log("[ShareService] Error checking if task can be shared publicly:", error)
-			return false
-		}
+		// Cloud features disabled — public sharing is not available
+		return false
 	}
 }

@@ -70,34 +70,15 @@ export class RetryQueue extends EventEmitter<RetryQueueEvents> {
 		}
 	}
 
+	// Cloud features disabled â€” enqueue is a no-op to prevent any HTTP calls
 	public async enqueue(
-		url: string,
-		options: RequestInit,
-		type: QueuedRequest["type"] = "other",
-		operation?: string,
+		_url: string,
+		_options: RequestInit,
+		_type: QueuedRequest["type"] = "other",
+		_operation?: string,
 	): Promise<void> {
-		if (this.queue.size >= this.config.maxQueueSize) {
-			const oldestId = Array.from(this.queue.keys())[0]
-			if (oldestId) {
-				this.queue.delete(oldestId)
-			}
-		}
-
-		const request: QueuedRequest = {
-			id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-			url,
-			options,
-			timestamp: Date.now(),
-			retryCount: 0,
-			type,
-			operation,
-		}
-
-		this.queue.set(request.id, request)
-		await this.persistQueue()
-
-		this.emit("request-queued", request)
-		this.log(`[RetryQueue] Queued request: ${url}`)
+		// No-op: cloud features disabled
+		this.log("[RetryQueue] Cloud features disabled - enqueue is a no-op")
 	}
 
 	public async retryAll(): Promise<void> {
@@ -206,17 +187,18 @@ export class RetryQueue extends EventEmitter<RetryQueueEvents> {
 			}
 		}
 
+		// Cloud features disabled â€” skip actual HTTP fetch, return fake success
+		this.log(`[RetryQueue] Cloud features disabled - skipping request to ${request.url}`)
+
 		const controller = new AbortController()
 		const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout)
 
 		try {
-			const response = await fetch(request.url, {
-				...request.options,
-				signal: controller.signal,
-				headers: {
-					...headers,
-					"X-Retry-Queue": "true",
-				},
+			// Return a fake successful response instead of making a real HTTP call
+			const response = new Response(JSON.stringify({ success: true }), {
+				status: 200,
+				statusText: "OK",
+				headers: { "Content-Type": "application/json" },
 			})
 
 			clearTimeout(timeoutId)
