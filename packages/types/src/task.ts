@@ -85,6 +85,10 @@ export type TaskProviderEvents = {
 
 	[RooCodeEventName.ModeChanged]: [mode: string]
 	[RooCodeEventName.ProviderProfileChanged]: [config: { name: string; provider?: string }]
+
+	[RooCodeEventName.SwarmSessionStarted]: [sessionId: string, leaderTaskId: string]
+	[RooCodeEventName.SwarmSessionEnded]: [sessionId: string, leaderTaskId: string]
+	[RooCodeEventName.WorkerRegistered]: [sessionId: string, taskId: string, agentName: string, agentColor: string]
 }
 
 /**

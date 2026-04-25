@@ -31,7 +31,7 @@ interface TeamPhaseProvider {
 	}): Promise<Task>
 	spawnConcurrentChildren(params: {
 		parentTaskId: string
-		tasks: Array<{ mode: string; message: string; worktree?: string }>
+		tasks: Array<{ mode: string; message: string; worktree?: string; role?: string }>
 		abortOnChildFailure?: boolean
 	}): Promise<Array<{ taskId: string; summary: string; error?: string }>>
 }
@@ -127,7 +127,7 @@ export class RunTeamPhaseTool extends BaseTool<"run_team_phase"> {
 				// Concurrent: all agents start simultaneously; parent stays alive.
 				const results = await provider.spawnConcurrentChildren({
 					parentTaskId: task.taskId,
-					tasks: agentSpecs.map(({ mode, message, worktree }) => ({ mode, message, worktree })),
+					tasks: agentSpecs.map(({ mode, message, worktree, role }) => ({ mode, message, worktree, role })),
 					abortOnChildFailure: phase.abortOnChildFailure ?? false,
 				})
 				pushToolResult(JSON.stringify(results, null, 2))

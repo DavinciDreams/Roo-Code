@@ -78,6 +78,7 @@ import type { IndexProgressUpdate } from "../../services/code-index/interfaces/m
 import { MdmService } from "../../services/mdm/MdmService"
 import { SkillsManager } from "../../services/skills/SkillsManager"
 import { TeamsManager } from "../../services/teams/TeamsManager"
+import { SwarmRegistry } from "../swarm/SwarmRegistry"
 
 import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
@@ -154,6 +155,7 @@ export class ClineProvider
 	protected mcpHub?: McpHub // Change from private to protected
 	protected skillsManager?: SkillsManager
 	protected teamsManager?: TeamsManager
+	protected swarmRegistry: SwarmRegistry = new SwarmRegistry()
 	private marketplaceManager: MarketplaceManager
 	private mdmService?: MdmService
 	private taskCreationCallback: (task: Task) => void
@@ -741,6 +743,7 @@ export class ClineProvider
 		await this.skillsManager?.dispose()
 		this.skillsManager = undefined
 		this.teamsManager = undefined
+		this.swarmRegistry.dispose()
 		this.marketplaceManager?.cleanup()
 		this.customModesManager?.dispose()
 		this.taskHistoryStore.dispose()
@@ -3823,7 +3826,7 @@ export class ClineProvider
 	 */
 	public async spawnConcurrentChildren(params: {
 		parentTaskId: string
-		tasks: Array<{ mode: string; message: string; worktree?: string; todos?: TodoItem[] }>
+		tasks: Array<{ mode: string; message: string; worktree?: string; todos?: TodoItem[]; role?: string }>
 		abortOnChildFailure?: boolean
 	}): Promise<Array<{ taskId: string; summary: string; payload?: Record<string, unknown>; error?: string }>> {
 		const { parentTaskId, tasks, abortOnChildFailure = false } = params
@@ -3835,6 +3838,19 @@ export class ClineProvider
 
 		TelemetryService.instance.captureParallelTaskSpawned(parentTaskId, tasks.length)
 		this.log(`[spawnConcurrentChildren] Spawning ${tasks.length} concurrent children for parent ${parentTaskId}`)
+
+		// Create a swarm session so every worker gets a stable identity + color.
+		const sessionId = parentTaskId
+		this.swarmRegistry.createSession(sessionId, parentTaskId)
+		this.emit(RooCodeEventName.SwarmSessionStarted, sessionId, parentTaskId)
+
+		// Mark parent as swarm leader in its history item.
+		try {
+			const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
+			await this.updateTaskHistory({ ...parentHistory, swarmSessionId: sessionId, isSwarmLeader: true })
+		} catch {
+			// non-fatal
+		}
 
 		// Phase 1: sequential setup — mode switch and task creation must be serialised to
 		// prevent handleModeSwitch() from racing (it mutates global provider mode state).
@@ -3851,7 +3867,9 @@ export class ClineProvider
 		}
 		const entries: ChildEntry[] = []
 
-		for (const spec of tasks) {
+		for (let i = 0; i < tasks.length; i++) {
+			const spec = tasks[i]
+
 			try {
 				await this.handleModeSwitch(spec.mode as any)
 			} catch {
@@ -3870,13 +3888,32 @@ export class ClineProvider
 				workspacePath: childWorktreePath,
 			})
 
-			if (childWorktreePath) {
-				try {
-					const { historyItem: childHistory } = await this.getTaskWithId(child.taskId)
-					await this.updateTaskHistory({ ...childHistory, worktreePath: childWorktreePath })
-				} catch {
-					// non-fatal
-				}
+			// Assign swarm identity to this worker.
+			const agentName = spec.role ?? `worker-${i + 1}`
+			const agentColor = this.swarmRegistry.assignColor()
+			const agentId = `${agentName}@${sessionId}`
+			const identity: import("@roo-code/types").AgentIdentity = {
+				agentId,
+				agentName,
+				color: agentColor,
+				isLeader: false,
+				taskId: child.taskId,
+			}
+			this.swarmRegistry.registerWorker(sessionId, identity)
+			this.emit(RooCodeEventName.WorkerRegistered, sessionId, child.taskId, agentName, agentColor)
+
+			try {
+				const { historyItem: childHistory } = await this.getTaskWithId(child.taskId)
+				await this.updateTaskHistory({
+					...childHistory,
+					...(childWorktreePath ? { worktreePath: childWorktreePath } : {}),
+					swarmSessionId: sessionId,
+					agentId,
+					agentName,
+					agentColor,
+				})
+			} catch {
+				// non-fatal
 			}
 
 			const completionPromise = new Promise<{
@@ -3946,6 +3983,9 @@ export class ClineProvider
 		this.log(
 			`[spawnConcurrentChildren] All ${tasks.length} children completed for parent ${parentTaskId}. failures=${hadFailures}`,
 		)
+
+		this.swarmRegistry.destroySession(sessionId)
+		this.emit(RooCodeEventName.SwarmSessionEnded, sessionId, parentTaskId)
 
 		return results
 	}
