@@ -1,8 +1,12 @@
 import type OpenAI from "openai"
 
-const SPAWN_PARALLEL_TASKS_DESCRIPTION = `Spawn multiple subtasks that execute sequentially and whose results are aggregated before returning to you.
+const SPAWN_PARALLEL_TASKS_DESCRIPTION = `Spawn multiple subtasks and collect their aggregated results before continuing.
 
-Use this when you need to split work into independent chunks (e.g., implement N features, analyze N files, run N experiments) and collect all results before proceeding. Each task runs to completion before the next starts. When all tasks finish, you receive their aggregated results as a JSON array.
+**Execution modes:**
+- \`concurrent: false\` (default) — tasks run one at a time; the parent task is suspended until all finish. Lower resource use; good for dependent or quota-sensitive work.
+- \`concurrent: true\` — all tasks start simultaneously and run in parallel while the parent stays active. Best for truly independent work where wall-clock time matters.
+
+Use this when you need to split work into independent chunks (e.g., implement N features, analyze N files, run N experiments). When all tasks finish, you receive their aggregated results as a JSON array.
 
 CRITICAL: This tool MUST be called alone. Do NOT call it alongside other tools in the same turn.`
 
@@ -44,8 +48,18 @@ export default {
 					},
 					minItems: 2,
 				},
+				concurrent: {
+					type: ["boolean", "null"],
+					description:
+						"When true, all tasks run simultaneously (parent stays active). When false or omitted, tasks run sequentially.",
+				},
+				abortOnChildFailure: {
+					type: ["boolean", "null"],
+					description:
+						"When true and concurrent is also true, abort all remaining sibling tasks as soon as one fails. Has no effect in sequential mode (use the default false to collect all results regardless of failures).",
+				},
 			},
-			required: ["tasks"],
+			required: ["tasks", "concurrent", "abortOnChildFailure"],
 			additionalProperties: false,
 		},
 	},

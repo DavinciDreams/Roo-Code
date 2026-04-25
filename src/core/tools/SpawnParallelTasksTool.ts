@@ -105,6 +105,7 @@ export class SpawnParallelTasksTool extends BaseTool<"spawn_parallel_tasks"> {
 						worktree: t.spec.worktree || undefined,
 						todos: t.todoItems,
 					})),
+					abortOnChildFailure,
 				})
 				pushToolResult(JSON.stringify(results, null, 2))
 			} else {

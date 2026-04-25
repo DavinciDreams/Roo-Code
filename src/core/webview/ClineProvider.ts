@@ -3811,8 +3811,9 @@ export class ClineProvider
 	public async spawnConcurrentChildren(params: {
 		parentTaskId: string
 		tasks: Array<{ mode: string; message: string; worktree?: string; todos?: TodoItem[] }>
+		abortOnChildFailure?: boolean
 	}): Promise<Array<{ taskId: string; summary: string; payload?: Record<string, unknown>; error?: string }>> {
-		const { parentTaskId, tasks } = params
+		const { parentTaskId, tasks, abortOnChildFailure = false } = params
 
 		const parent = this.tasks.get(parentTaskId)
 		if (!parent) {
@@ -3822,8 +3823,22 @@ export class ClineProvider
 		TelemetryService.instance.captureParallelTaskSpawned(parentTaskId, tasks.length)
 		this.log(`[spawnConcurrentChildren] Spawning ${tasks.length} concurrent children for parent ${parentTaskId}`)
 
-		const childPromises = tasks.map(async (spec) => {
-			// Switch mode and optionally create worktree before spawning.
+		// Phase 1: sequential setup — mode switch and task creation must be serialised to
+		// prevent handleModeSwitch() from racing (it mutates global provider mode state).
+		// Task.start() is NOT called yet; that happens in phase 2.
+		type ChildEntry = {
+			child: Task
+			taskIdForError: string
+			completionPromise: Promise<{
+				taskId: string
+				summary: string
+				payload?: Record<string, unknown>
+				error?: string
+			}>
+		}
+		const entries: ChildEntry[] = []
+
+		for (const spec of tasks) {
 			try {
 				await this.handleModeSwitch(spec.mode as any)
 			} catch {
@@ -3851,7 +3866,6 @@ export class ClineProvider
 				}
 			}
 
-			// Register a completion handler before starting the child.
 			const completionPromise = new Promise<{
 				taskId: string
 				summary: string
@@ -3864,24 +3878,54 @@ export class ClineProvider
 				})
 			})
 
+			entries.push({ child, taskIdForError: child.taskId, completionPromise })
+		}
+
+		// Phase 2: start all children in a tight sync loop so they run concurrently.
+		for (const { child } of entries) {
 			child.start()
 			this.emit(RooCodeEventName.TaskSpawned, child.taskId)
 			this.emit(RooCodeEventName.TaskDelegated, parentTaskId, child.taskId)
+		}
 
-			return completionPromise
-		})
+		// Phase 3: await completions.
+		// When abortOnChildFailure is set, the first rejection aborts all remaining siblings.
+		let abortTriggered = false
+		const abortSiblings = async (failedTaskId: string) => {
+			if (abortTriggered) return
+			abortTriggered = true
+			for (const { child } of entries) {
+				if (child.taskId === failedTaskId) continue
+				const handler = this.childCompletionHandlers.get(child.taskId)
+				this.childCompletionHandlers.delete(child.taskId)
+				// Abort the running child task.
+				await this.removeClineFromStack({ taskId: child.taskId, skipDelegationRepair: true })
+				handler?.reject(new Error("Aborted: sibling task failed"))
+				TelemetryService.instance.captureParallelTaskChildFailed(parentTaskId, child.taskId)
+			}
+			this.log(`[spawnConcurrentChildren] Aborted remaining siblings after child ${failedTaskId} failed`)
+		}
 
-		// Await all children; collect results even for failed ones (Promise.allSettled semantics).
-		const settled = await Promise.allSettled(childPromises)
+		const wrappedPromises = entries.map(({ child, completionPromise }) =>
+			completionPromise.then(
+				(r) => r,
+				async (err: unknown) => {
+					if (abortOnChildFailure) {
+						await abortSiblings(child.taskId)
+					}
+					throw err
+				},
+			),
+		)
+
+		const settled = await Promise.allSettled(wrappedPromises)
 		const results: Array<{ taskId: string; summary: string; payload?: Record<string, unknown>; error?: string }> =
 			settled.map((s, i) => {
 				if (s.status === "fulfilled") {
 					return s.value
 				}
-				// Rejected means child threw; synthesize an error result.
-				const taskId = tasks[i] ? `child-${i}` : `child-${i}`
 				const msg = s.reason instanceof Error ? s.reason.message : String(s.reason)
-				return { taskId, summary: msg, error: msg }
+				return { taskId: entries[i]?.taskIdForError ?? `child-${i}`, summary: msg, error: msg }
 			})
 
 		const hadFailures = results.some((r) => r.error !== undefined)
