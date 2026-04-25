@@ -1,8 +1,8 @@
 {
-	"name": "moo-code",
+	"name": "morse-code",
 	"displayName": "%extension.displayName%",
 	"description": "%extension.description%",
-	"publisher": "moo-code",
+	"publisher": "morse-code",
 	"version": "3.52.1",
 	"icon": "assets/icons/icon.png",
 	"galleryBanner": {
@@ -14,7 +14,7 @@
 		"node": "20.19.2"
 	},
 	"author": {
-		"name": "Moo Code"
+		"name": "Morse Code"
 	},
 	"repository": {
 		"type": "git",
@@ -42,8 +42,8 @@
 		"sonnet",
 		"ai",
 		"llama",
-		"moo code",
-		"moocode"
+		"morse code",
+		"morsecode"
 	],
 	"activationEvents": [
 		"onLanguage",
@@ -54,119 +54,119 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "moo-code-ActivityBar",
+					"id": "morse-code-ActivityBar",
 					"title": "%views.activitybar.title%",
 					"icon": "assets/icons/icon.svg"
 				}
 			]
 		},
 		"views": {
-			"moo-code-ActivityBar": [
+			"morse-code-ActivityBar": [
 				{
 					"type": "webview",
-					"id": "moo-code.SidebarProvider",
+					"id": "morse-code.SidebarProvider",
 					"name": "%views.sidebar.name%"
 				}
 			]
 		},
 		"commands": [
 			{
-				"command": "moo-code.plusButtonClicked",
+				"command": "morse-code.plusButtonClicked",
 				"title": "%command.newTask.title%",
 				"icon": "$(edit)"
 			},
 			{
-				"command": "moo-code.historyButtonClicked",
+				"command": "morse-code.historyButtonClicked",
 				"title": "%command.history.title%",
 				"icon": "$(history)"
 			},
 			{
-				"command": "moo-code.marketplaceButtonClicked",
+				"command": "morse-code.marketplaceButtonClicked",
 				"title": "%command.marketplace.title%",
 				"icon": "$(extensions)"
 			},
 			{
-				"command": "moo-code.popoutButtonClicked",
+				"command": "morse-code.popoutButtonClicked",
 				"title": "%command.openInEditor.title%",
 				"icon": "$(link-external)"
 			},
 			{
-				"command": "moo-code.cloudButtonClicked",
+				"command": "morse-code.cloudButtonClicked",
 				"title": "%command.cloud.title%",
 				"icon": "$(cloud)"
 			},
 			{
-				"command": "moo-code.settingsButtonClicked",
+				"command": "morse-code.settingsButtonClicked",
 				"title": "%command.settings.title%",
 				"icon": "$(settings-gear)"
 			},
 			{
-				"command": "moo-code.openInNewTab",
+				"command": "morse-code.openInNewTab",
 				"title": "%command.openInNewTab.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.explainCode",
+				"command": "morse-code.explainCode",
 				"title": "%command.explainCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.fixCode",
+				"command": "morse-code.fixCode",
 				"title": "%command.fixCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.improveCode",
+				"command": "morse-code.improveCode",
 				"title": "%command.improveCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.addToContext",
+				"command": "morse-code.addToContext",
 				"title": "%command.addToContext.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.newTask",
+				"command": "morse-code.newTask",
 				"title": "%command.newTask.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.terminalAddToContext",
+				"command": "morse-code.terminalAddToContext",
 				"title": "%command.terminal.addToContext.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "moo-code.terminalFixCommand",
+				"command": "morse-code.terminalFixCommand",
 				"title": "%command.terminal.fixCommand.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "moo-code.terminalExplainCommand",
+				"command": "morse-code.terminalExplainCommand",
 				"title": "%command.terminal.explainCommand.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "moo-code.setCustomStoragePath",
+				"command": "morse-code.setCustomStoragePath",
 				"title": "%command.setCustomStoragePath.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.importSettings",
+				"command": "morse-code.importSettings",
 				"title": "%command.importSettings.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.focusInput",
+				"command": "morse-code.focusInput",
 				"title": "%command.focusInput.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.acceptInput",
+				"command": "morse-code.acceptInput",
 				"title": "%command.acceptInput.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "moo-code.toggleAutoApprove",
+				"command": "morse-code.toggleAutoApprove",
 				"title": "%command.toggleAutoApprove.title%",
 				"category": "%configuration.title%"
 			}
@@ -174,112 +174,112 @@
 		"menus": {
 			"editor/context": [
 				{
-					"submenu": "moo-code.contextMenu",
+					"submenu": "morse-code.contextMenu",
 					"group": "1"
 				}
 			],
-			"moo-code.contextMenu": [
+			"morse-code.contextMenu": [
 				{
-					"command": "moo-code.addToContext",
+					"command": "morse-code.addToContext",
 					"group": "1_actions@1"
 				},
 				{
-					"command": "moo-code.explainCode",
+					"command": "morse-code.explainCode",
 					"group": "1_actions@2"
 				},
 				{
-					"command": "moo-code.improveCode",
+					"command": "morse-code.improveCode",
 					"group": "1_actions@3"
 				}
 			],
 			"terminal/context": [
 				{
-					"submenu": "moo-code.terminalMenu",
+					"submenu": "morse-code.terminalMenu",
 					"group": "2"
 				}
 			],
-			"moo-code.terminalMenu": [
+			"morse-code.terminalMenu": [
 				{
-					"command": "moo-code.terminalAddToContext",
+					"command": "morse-code.terminalAddToContext",
 					"group": "1_actions@1"
 				},
 				{
-					"command": "moo-code.terminalFixCommand",
+					"command": "morse-code.terminalFixCommand",
 					"group": "1_actions@2"
 				},
 				{
-					"command": "moo-code.terminalExplainCommand",
+					"command": "morse-code.terminalExplainCommand",
 					"group": "1_actions@3"
 				}
 			],
 			"view/title": [
 				{
-					"command": "moo-code.plusButtonClicked",
+					"command": "morse-code.plusButtonClicked",
 					"group": "navigation@1",
-					"when": "view == moo-code.SidebarProvider"
+					"when": "view == morse-code.SidebarProvider"
 				},
 				{
-					"command": "moo-code.settingsButtonClicked",
+					"command": "morse-code.settingsButtonClicked",
 					"group": "navigation@2",
-					"when": "view == moo-code.SidebarProvider"
+					"when": "view == morse-code.SidebarProvider"
 				},
 				{
-					"command": "moo-code.cloudButtonClicked",
+					"command": "morse-code.cloudButtonClicked",
 					"group": "navigation@3",
-					"when": "view == moo-code.SidebarProvider"
+					"when": "view == morse-code.SidebarProvider"
 				},
 				{
-					"command": "moo-code.marketplaceButtonClicked",
+					"command": "morse-code.marketplaceButtonClicked",
 					"group": "navigation@4",
-					"when": "view == moo-code.SidebarProvider"
+					"when": "view == morse-code.SidebarProvider"
 				},
 				{
-					"command": "moo-code.historyButtonClicked",
+					"command": "morse-code.historyButtonClicked",
 					"group": "overflow@1",
-					"when": "view == moo-code.SidebarProvider"
+					"when": "view == morse-code.SidebarProvider"
 				},
 				{
-					"command": "moo-code.popoutButtonClicked",
+					"command": "morse-code.popoutButtonClicked",
 					"group": "overflow@2",
-					"when": "view == moo-code.SidebarProvider"
+					"when": "view == morse-code.SidebarProvider"
 				}
 			],
 			"editor/title": [
 				{
-					"command": "moo-code.plusButtonClicked",
+					"command": "morse-code.plusButtonClicked",
 					"group": "navigation@1",
-					"when": "activeWebviewPanelId == moo-code.TabPanelProvider"
+					"when": "activeWebviewPanelId == morse-code.TabPanelProvider"
 				},
 				{
-					"command": "moo-code.settingsButtonClicked",
+					"command": "morse-code.settingsButtonClicked",
 					"group": "navigation@2",
-					"when": "activeWebviewPanelId == moo-code.TabPanelProvider"
+					"when": "activeWebviewPanelId == morse-code.TabPanelProvider"
 				},
 				{
-					"command": "moo-code.cloudButtonClicked",
+					"command": "morse-code.cloudButtonClicked",
 					"group": "navigation@3",
-					"when": "activeWebviewPanelId == moo-code.TabPanelProvider"
+					"when": "activeWebviewPanelId == morse-code.TabPanelProvider"
 				},
 				{
-					"command": "moo-code.marketplaceButtonClicked",
+					"command": "morse-code.marketplaceButtonClicked",
 					"group": "navigation@4",
-					"when": "activeWebviewPanelId == moo-code.TabPanelProvider"
+					"when": "activeWebviewPanelId == morse-code.TabPanelProvider"
 				},
 				{
-					"command": "moo-code.historyButtonClicked",
+					"command": "morse-code.historyButtonClicked",
 					"group": "overflow@1",
-					"when": "activeWebviewPanelId == moo-code.TabPanelProvider"
+					"when": "activeWebviewPanelId == morse-code.TabPanelProvider"
 				},
 				{
-					"command": "moo-code.popoutButtonClicked",
+					"command": "morse-code.popoutButtonClicked",
 					"group": "overflow@2",
-					"when": "activeWebviewPanelId == moo-code.TabPanelProvider"
+					"when": "activeWebviewPanelId == morse-code.TabPanelProvider"
 				}
 			]
 		},
 		"keybindings": [
 			{
-				"command": "moo-code.addToContext",
+				"command": "morse-code.addToContext",
 				"key": "cmd+k cmd+a",
 				"mac": "cmd+k cmd+a",
 				"win": "ctrl+k ctrl+a",
@@ -287,7 +287,7 @@
 				"when": "editorTextFocus && editorHasSelection"
 			},
 			{
-				"command": "moo-code.toggleAutoApprove",
+				"command": "morse-code.toggleAutoApprove",
 				"key": "cmd+alt+a",
 				"mac": "cmd+alt+a",
 				"win": "ctrl+alt+a",
@@ -296,18 +296,18 @@
 		],
 		"submenus": [
 			{
-				"id": "moo-code.contextMenu",
+				"id": "morse-code.contextMenu",
 				"label": "%views.contextMenu.label%"
 			},
 			{
-				"id": "moo-code.terminalMenu",
+				"id": "morse-code.terminalMenu",
 				"label": "%views.terminalMenu.label%"
 			}
 		],
 		"configuration": {
 			"title": "%configuration.title%",
 			"properties": {
-				"moo-code.allowedCommands": {
+				"morse-code.allowedCommands": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -319,7 +319,7 @@
 					],
 					"description": "%commands.allowedCommands.description%"
 				},
-				"moo-code.deniedCommands": {
+				"morse-code.deniedCommands": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -327,14 +327,14 @@
 					"default": [],
 					"description": "%commands.deniedCommands.description%"
 				},
-				"moo-code.commandExecutionTimeout": {
+				"morse-code.commandExecutionTimeout": {
 					"type": "number",
 					"default": 0,
 					"minimum": 0,
 					"maximum": 600,
 					"description": "%commands.commandExecutionTimeout.description%"
 				},
-				"moo-code.commandTimeoutAllowlist": {
+				"morse-code.commandTimeoutAllowlist": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -342,12 +342,12 @@
 					"default": [],
 					"description": "%commands.commandTimeoutAllowlist.description%"
 				},
-				"moo-code.preventCompletionWithOpenTodos": {
+				"morse-code.preventCompletionWithOpenTodos": {
 					"type": "boolean",
 					"default": false,
 					"description": "%commands.preventCompletionWithOpenTodos.description%"
 				},
-				"moo-code.vsCodeLmModelSelector": {
+				"morse-code.vsCodeLmModelSelector": {
 					"type": "object",
 					"properties": {
 						"vendor": {
@@ -361,82 +361,82 @@
 					},
 					"description": "%settings.vsCodeLmModelSelector.description%"
 				},
-				"moo-code.customStoragePath": {
+				"morse-code.customStoragePath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.customStoragePath.description%"
 				},
-				"moo-code.enableCodeActions": {
+				"morse-code.enableCodeActions": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.enableCodeActions.description%"
 				},
-				"moo-code.autoImportSettingsPath": {
+				"morse-code.autoImportSettingsPath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.autoImportSettingsPath.description%"
 				},
-				"moo-code.maximumIndexedFilesForFileSearch": {
+				"morse-code.maximumIndexedFilesForFileSearch": {
 					"type": "number",
 					"default": 10000,
 					"minimum": 5000,
 					"maximum": 500000,
 					"description": "%settings.maximumIndexedFilesForFileSearch.description%"
 				},
-				"moo-code.useAgentRules": {
+				"morse-code.useAgentRules": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.useAgentRules.description%"
 				},
-				"moo-code.apiRequestTimeout": {
+				"morse-code.apiRequestTimeout": {
 					"type": "number",
 					"default": 600,
 					"minimum": 0,
 					"maximum": 3600,
 					"description": "%settings.apiRequestTimeout.description%"
 				},
-				"moo-code.newTaskRequireTodos": {
+				"morse-code.newTaskRequireTodos": {
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.newTaskRequireTodos.description%"
 				},
-				"moo-code.codeIndex.embeddingBatchSize": {
+				"morse-code.codeIndex.embeddingBatchSize": {
 					"type": "number",
 					"default": 60,
 					"minimum": 1,
 					"maximum": 200,
 					"description": "%settings.codeIndex.embeddingBatchSize.description%"
 				},
-				"moo-code.debug": {
+				"morse-code.debug": {
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.debug.description%"
 				},
-				"moo-code.debugProxy.enabled": {
+				"morse-code.debugProxy.enabled": {
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.debugProxy.enabled.description%",
 					"markdownDescription": "%settings.debugProxy.enabled.description%"
 				},
-				"moo-code.debugProxy.serverUrl": {
+				"morse-code.debugProxy.serverUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:8888",
 					"description": "%settings.debugProxy.serverUrl.description%",
 					"markdownDescription": "%settings.debugProxy.serverUrl.description%"
 				},
-				"moo-code.debugProxy.tlsInsecure": {
+				"morse-code.debugProxy.tlsInsecure": {
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.debugProxy.tlsInsecure.description%",
 					"markdownDescription": "%settings.debugProxy.tlsInsecure.description%"
 				},
-				"moo-code.microCompactEnabled": {
+				"morse-code.microCompactEnabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.microCompactEnabled.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.microCompactThreshold": {
+				"morse-code.microCompactThreshold": {
 					"type": "number",
 					"default": 5,
 					"minimum": 1,
@@ -444,7 +444,7 @@
 					"description": "%settings.microCompactThreshold.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.microCompactKeepRecent": {
+				"morse-code.microCompactKeepRecent": {
 					"type": "number",
 					"default": 3,
 					"minimum": 1,
@@ -452,13 +452,13 @@
 					"description": "%settings.microCompactKeepRecent.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.sessionMemoryCompactEnabled": {
+				"morse-code.sessionMemoryCompactEnabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.sessionMemoryCompactEnabled.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.sessionMemoryCompactMinTokens": {
+				"morse-code.sessionMemoryCompactMinTokens": {
 					"type": "number",
 					"default": 10000,
 					"minimum": 1000,
@@ -466,7 +466,7 @@
 					"description": "%settings.sessionMemoryCompactMinTokens.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.sessionMemoryCompactMaxTokens": {
+				"morse-code.sessionMemoryCompactMaxTokens": {
 					"type": "number",
 					"default": 50000,
 					"minimum": 10000,
@@ -474,7 +474,7 @@
 					"description": "%settings.sessionMemoryCompactMaxTokens.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.sessionMemoryMinTokensToInit": {
+				"morse-code.sessionMemoryMinTokensToInit": {
 					"type": "number",
 					"default": 10000,
 					"minimum": 1000,
@@ -482,7 +482,7 @@
 					"description": "%settings.sessionMemoryMinTokensToInit.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.sessionMemoryMinTokensBetweenUpdate": {
+				"morse-code.sessionMemoryMinTokensBetweenUpdate": {
 					"type": "number",
 					"default": 5000,
 					"minimum": 1000,
@@ -490,7 +490,7 @@
 					"description": "%settings.sessionMemoryMinTokensBetweenUpdate.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.sessionMemoryToolCallsBetweenUpdates": {
+				"morse-code.sessionMemoryToolCallsBetweenUpdates": {
 					"type": "number",
 					"default": 3,
 					"minimum": 1,
@@ -498,25 +498,25 @@
 					"description": "%settings.sessionMemoryToolCallsBetweenUpdates.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.compactHooksEnabled": {
+				"morse-code.compactHooksEnabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.compactHooksEnabled.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.compactHooksPath": {
+				"morse-code.compactHooksPath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.compactHooksPath.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.promptTooLongRetryEnabled": {
+				"morse-code.promptTooLongRetryEnabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.promptTooLongRetryEnabled.description%",
 					"icon": "settings-gear"
 				},
-				"moo-code.promptTooLongMaxRetries": {
+				"morse-code.promptTooLongMaxRetries": {
 					"type": "number",
 					"default": 2,
 					"minimum": 0,

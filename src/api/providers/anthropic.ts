@@ -40,6 +40,11 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// Prefer ANTHROPIC_AUTH_TOKEN env var over ANTHROPIC_API_KEY when no explicit
 		// key is configured — lets Claude Code Max OAuth work without storing a key.
 		const envAuthToken = !this.options.apiKey ? process.env.ANTHROPIC_AUTH_TOKEN : undefined
+
+		if (envAuthToken) {
+			console.warn("[AnthropicHandler] Using ANTHROPIC_AUTH_TOKEN from environment. Ensure this is intentional.")
+		}
+
 		const useAuthToken = this.options.anthropicUseAuthToken || Boolean(envAuthToken)
 		const apiKeyFieldName = useAuthToken ? "authToken" : "apiKey"
 		const apiKeyValue = this.options.apiKey || envAuthToken

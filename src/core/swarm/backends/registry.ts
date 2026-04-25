@@ -9,18 +9,22 @@ export type WorkerBackendType = "in_process" | "cli"
  * "in_process" is the default: workers run inside the VS Code extension host
  * via `spawnConcurrentChildren` — no separate binary required.
  *
- * "cli" spawns a headless `moo-worker` child process per worker.
- * Requires the moo-worker binary to be built and on PATH (or in the extension's
+ * "cli" spawns a headless `morse-worker` child process per worker.
+ * Requires the morse-worker binary to be built and on PATH (or in the extension's
  * bin/ directory). Full implementation tracked as post-P6.
  */
-export function getWorkerBackend(type: WorkerBackendType): IWorkerBackend {
+export function getWorkerBackend(type: WorkerBackendType): IWorkerBackend | null {
 	switch (type) {
 		case "cli":
 			return new CliWorkerBackend()
-		default:
-			throw new Error(
-				`[getWorkerBackend] Backend "${type}" cannot be returned as IWorkerBackend. ` +
-					`In-process workers are managed directly by spawnConcurrentChildren.`,
-			)
+		case "in_process":
+			// In-process workers are managed directly by spawnConcurrentChildren,
+			// not through the IWorkerBackend interface.
+			return null
+		default: {
+			const _exhaustive: never = type
+			console.warn(`[getWorkerBackend] Unknown backend type: ${_exhaustive}`)
+			return null
+		}
 	}
 }

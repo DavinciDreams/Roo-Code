@@ -13,9 +13,27 @@ interface SkillParams {
 	args?: string
 }
 
+/**
+ * Tool that resolves and executes a named skill from the skills system.
+ *
+ * When invoked, it looks up the requested skill for the current mode via the
+ * SkillsManager, injects the skill's SKILL.md content as context, and — after
+ * user approval — returns the rendered skill result to the agent. Skills that
+ * do not exist for the active mode are rejected with a list of available
+ * alternatives.
+ */
 export class SkillTool extends BaseTool<"skill"> {
 	readonly name = "skill" as const
 
+	/**
+	 * Resolves the named skill for the current mode, requests user approval, and
+	 * pushes the skill's rendered content as the tool result.
+	 *
+	 * @param params.skill - The name of the skill to look up.
+	 * @param params.args - Optional arguments forwarded verbatim to the skill renderer.
+	 * @param task - The owning Task instance, used to access provider state and error tracking.
+	 * @param callbacks - Standard tool callbacks for approval, error handling, and result delivery.
+	 */
 	async execute(params: SkillParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { skill: skillName, args } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
@@ -80,6 +98,11 @@ export class SkillTool extends BaseTool<"skill"> {
 		}
 	}
 
+	/**
+	 * Streams a partial UI update while the skill name and args are still being
+	 * received from the model, so the user sees progressive feedback before the
+	 * full tool call is ready for execution.
+	 */
 	override async handlePartial(task: Task, block: ToolUse<"skill">): Promise<void> {
 		const skillName: string | undefined = block.params.skill
 		const args: string | undefined = block.params.args

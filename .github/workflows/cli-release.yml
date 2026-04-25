@@ -29,6 +29,9 @@ jobs:
           - os: ubuntu-24.04-arm
             platform: linux-arm64
             runs-on: ubuntu-24.04-arm
+          - os: windows-latest
+            platform: windows-x64
+            runs-on: windows-latest
 
     runs-on: ${{ matrix.runs-on }}
 
@@ -59,8 +62,9 @@ jobs:
       - name: Build CLI
         run: pnpm --filter @roo-code/cli build
 
-      - name: Create release tarball
+      - name: Create release archive (Unix)
         id: tarball
+        if: matrix.platform != 'windows-x64'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           PLATFORM: ${{ matrix.platform }}
@@ -168,7 +172,119 @@ jobs:
           echo "Created: $TARBALL"
           ls -la "$TARBALL"
 
-      - name: Verify tarball
+      - name: Create release archive (Windows)
+        id: tarball_windows
+        if: matrix.platform == 'windows-x64'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          RELEASE_DIR="roo-cli-${PLATFORM}"
+          ARCHIVE="roo-cli-${PLATFORM}.zip"
+
+          # Clean up any previous build.
+          rm -rf "$RELEASE_DIR"
+          rm -f "$ARCHIVE"
+
+          # Create directory structure.
+          mkdir -p "$RELEASE_DIR/bin"
+          mkdir -p "$RELEASE_DIR/lib"
+          mkdir -p "$RELEASE_DIR/extension"
+
+          # Copy CLI dist files.
+          echo "Copying CLI files..."
+          cp -r apps/cli/dist/* "$RELEASE_DIR/lib/"
+
+          # Create package.json for npm install.
+          echo "Creating package.json..."
+          node -e "
+            const pkg = require('./apps/cli/package.json');
+            const newPkg = {
+              name: '@roo-code/cli',
+              version: '$VERSION',
+              type: 'module',
+              dependencies: {
+                '@inkjs/ui': pkg.dependencies['@inkjs/ui'],
+                '@trpc/client': pkg.dependencies['@trpc/client'],
+                'commander': pkg.dependencies.commander,
+                'fuzzysort': pkg.dependencies.fuzzysort,
+                'ink': pkg.dependencies.ink,
+                'p-wait-for': pkg.dependencies['p-wait-for'],
+                'react': pkg.dependencies.react,
+                'superjson': pkg.dependencies.superjson,
+                'zustand': pkg.dependencies.zustand
+              }
+            };
+            console.log(JSON.stringify(newPkg, null, 2));
+          " > "$RELEASE_DIR/package.json"
+
+          # Copy extension bundle.
+          echo "Copying extension bundle..."
+          cp -r src/dist/* "$RELEASE_DIR/extension/"
+
+          # Add package.json to extension directory for CommonJS.
+          echo '{"type": "commonjs"}' > "$RELEASE_DIR/extension/package.json"
+
+          # Find and copy ripgrep binary (Windows binary is rg.exe).
+          echo "Looking for ripgrep binary..."
+          RIPGREP_PATH=$(find node_modules -path "*/@vscode/ripgrep/bin/rg.exe" -type f 2>/dev/null | head -1)
+          if [ -n "$RIPGREP_PATH" ] && [ -f "$RIPGREP_PATH" ]; then
+            echo "Found ripgrep at: $RIPGREP_PATH"
+            mkdir -p "$RELEASE_DIR/node_modules/@vscode/ripgrep/bin"
+            cp "$RIPGREP_PATH" "$RELEASE_DIR/node_modules/@vscode/ripgrep/bin/"
+            mkdir -p "$RELEASE_DIR/bin"
+            cp "$RIPGREP_PATH" "$RELEASE_DIR/bin/"
+          else
+            echo "Warning: ripgrep binary not found"
+          fi
+
+          # Create the Node.js entry point (roo.js — imported by the .cmd launcher).
+          echo "Creating wrapper script..."
+          printf '%s\n' '#!/usr/bin/env node' \
+            '' \
+            "import { fileURLToPath } from 'url';" \
+            "import { dirname, join } from 'path';" \
+            '' \
+            'const __filename = fileURLToPath(import.meta.url);' \
+            'const __dirname = dirname(__filename);' \
+            '' \
+            '// Set environment variables for the CLI' \
+            "process.env.ROO_CLI_ROOT = join(__dirname, '..');" \
+            "process.env.ROO_EXTENSION_PATH = join(__dirname, '..', 'extension');" \
+            "process.env.ROO_RIPGREP_PATH = join(__dirname, 'rg.exe');" \
+            '' \
+            '// Import and run the actual CLI' \
+            "await import(join(__dirname, '..', 'lib', 'index.js'));" \
+            > "$RELEASE_DIR/bin/roo.js"
+
+          # Create a Windows .cmd launcher so `roo` works from CMD and PowerShell.
+          printf '%s\r\n' \
+            '@echo off' \
+            'node "%~dp0roo.js" %*' \
+            > "$RELEASE_DIR/bin/roo.cmd"
+
+          # Create empty .env file.
+          touch "$RELEASE_DIR/.env"
+
+          # Create zip archive (PowerShell Compress-Archive is available on windows-latest).
+          echo "Creating zip archive..."
+          powershell -Command "Compress-Archive -Path '${RELEASE_DIR}' -DestinationPath '${ARCHIVE}' -Force"
+
+          # Clean up release directory.
+          rm -rf "$RELEASE_DIR"
+
+          # Create checksum using PowerShell's Get-FileHash (CertUtil as fallback).
+          echo "Creating checksum..."
+          powershell -Command "(Get-FileHash '${ARCHIVE}' -Algorithm SHA256).Hash.ToLower() + '  ${ARCHIVE}'" \
+            > "${ARCHIVE}.sha256"
+
+          echo "tarball=${ARCHIVE}" >> $GITHUB_OUTPUT
+          echo "Created: ${ARCHIVE}"
+          ls -la "${ARCHIVE}"
+
+      - name: Verify archive (Unix)
+        if: matrix.platform != 'windows-x64'
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
@@ -194,6 +310,33 @@ jobs:
           # Cleanup.
           rm -rf "$VERIFY_DIR"
 
+      - name: Verify archive (Windows)
+        if: matrix.platform == 'windows-x64'
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          ARCHIVE="roo-cli-${PLATFORM}.zip"
+
+          # Extract to temp directory for verification.
+          VERIFY_DIR=$(mktemp -d)
+          powershell -Command "Expand-Archive -Path '${ARCHIVE}' -DestinationPath '${VERIFY_DIR}' -Force"
+
+          echo "Verifying zip contents..."
+          ls -la "$VERIFY_DIR/roo-cli-${PLATFORM}/"
+
+          # Check required files exist (Windows launcher is roo.cmd / roo.js).
+          test -f "$VERIFY_DIR/roo-cli-${PLATFORM}/bin/roo.cmd" || { echo "Missing bin/roo.cmd"; exit 1; }
+          test -f "$VERIFY_DIR/roo-cli-${PLATFORM}/bin/roo.js"  || { echo "Missing bin/roo.js"; exit 1; }
+          test -f "$VERIFY_DIR/roo-cli-${PLATFORM}/lib/index.js" || { echo "Missing lib/index.js"; exit 1; }
+          test -f "$VERIFY_DIR/roo-cli-${PLATFORM}/package.json" || { echo "Missing package.json"; exit 1; }
+          test -d "$VERIFY_DIR/roo-cli-${PLATFORM}/extension" || { echo "Missing extension directory"; exit 1; }
+
+          echo "Zip verification passed!"
+
+          # Cleanup.
+          rm -rf "$VERIFY_DIR"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -201,6 +344,8 @@ jobs:
           path: |
             roo-cli-${{ matrix.platform }}.tar.gz
             roo-cli-${{ matrix.platform }}.tar.gz.sha256
+            roo-cli-${{ matrix.platform }}.zip
+            roo-cli-${{ matrix.platform }}.zip.sha256
           retention-days: 7
 
   # Create GitHub release with all platform artifacts.
@@ -235,6 +380,7 @@ jobs:
         run: |
           mkdir -p release
           find artifacts -name "*.tar.gz" -exec cp {} release/ \;
+          find artifacts -name "*.zip" -exec cp {} release/ \;
           find artifacts -name "*.sha256" -exec cp {} release/ \;
           ls -la release/
 
@@ -331,7 +477,7 @@ jobs:
           echo "## Requirements" >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
           echo "- Node.js 20 or higher" >> "$NOTES_FILE"
-          echo "- macOS Apple Silicon (M1/M2/M3/M4), Linux x64, or Linux ARM64" >> "$NOTES_FILE"
+          echo "- macOS Apple Silicon (M1/M2/M3/M4), Linux x64, Linux ARM64, or Windows x64" >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
           echo "## Usage" >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
@@ -349,6 +495,7 @@ jobs:
           echo '- `roo-cli-darwin-arm64.tar.gz` - macOS Apple Silicon (M1/M2/M3)' >> "$NOTES_FILE"
           echo '- `roo-cli-linux-x64.tar.gz` - Linux x64' >> "$NOTES_FILE"
           echo '- `roo-cli-linux-arm64.tar.gz` - Linux ARM64' >> "$NOTES_FILE"
+          echo '- `roo-cli-windows-x64.zip` - Windows x64 (extract and add `bin\` to PATH)' >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
           echo "## Checksums" >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
@@ -383,7 +530,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The following artifacts were built:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          find artifacts -name "*.tar.gz" | while read f; do
+          find artifacts \( -name "*.tar.gz" -o -name "*.zip" \) | while read f; do
             SIZE=$(ls -lh "$f" | awk '{print $5}')
             echo "- $(basename $f) ($SIZE)" >> $GITHUB_STEP_SUMMARY
           done

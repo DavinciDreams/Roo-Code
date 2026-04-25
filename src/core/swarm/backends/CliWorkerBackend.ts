@@ -4,12 +4,12 @@ import path from "path"
 import type { IWorkerBackend, WorkerSpawnConfig, WorkerSpawnResult } from "./IWorkerBackend"
 
 /**
- * Spawns each swarm worker as a headless `moo-worker` child process.
+ * Spawns each swarm worker as a headless `morse-worker` child process.
  *
  * The binary communicates via FileMailbox (JSON files in `mailboxDir`),
  * so no VS Code APIs are required in the worker process.
  *
- * NOTE: The `moo-worker` binary (src/bin/moo-worker.ts) is a skeleton.
+ * NOTE: The `morse-worker` binary (src/bin/morse-worker.ts) is a skeleton.
  * Full headless task execution requires extracting `Task` from VS Code
  * dependencies — tracked as a follow-up after P6.
  */
@@ -22,7 +22,7 @@ export class CliWorkerBackend implements IWorkerBackend {
 	async spawn(config: WorkerSpawnConfig): Promise<WorkerSpawnResult> {
 		// In the bundled extension (dist/extension.js), __dirname = dist/.
 		// Workers are compiled to dist/workers/ alongside the main bundle.
-		const binPath = config.workerBinPath ?? path.resolve(__dirname, "workers", "moo-worker.js")
+		const binPath = config.workerBinPath ?? path.resolve(__dirname, "workers", "morse-worker.js")
 
 		const args = [
 			binPath,
@@ -41,8 +41,11 @@ export class CliWorkerBackend implements IWorkerBackend {
 
 		const child = spawn(process.execPath, args, {
 			cwd: config.workspacePath,
-			stdio: "inherit",
+			stdio: ["pipe", "pipe", "pipe"],
 		})
+
+		child.stdout?.on("data", (data: Buffer) => process.stdout.write(`[worker:${config.agentId}] ${data}`))
+		child.stderr?.on("data", (data: Buffer) => process.stderr.write(`[worker:${config.agentId}] ${data}`))
 
 		this.processes.set(config.agentId, child)
 

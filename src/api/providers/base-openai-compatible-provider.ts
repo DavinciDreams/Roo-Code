@@ -23,6 +23,20 @@ type BaseOpenAiCompatibleProviderOptions<ModelName extends string> = ApiHandlerO
 	defaultTemperature?: number
 }
 
+/**
+ * Abstract base class for API providers whose endpoints are compatible with the
+ * OpenAI Chat Completions API.
+ *
+ * Concrete subclasses supply a model registry and provider-specific defaults;
+ * this class provides the shared implementation of streaming message creation,
+ * single-turn prompt completion, token-usage accounting, and model resolution.
+ * It also handles provider-level error normalisation (including non-standard
+ * error envelopes such as MiniMax's `base_resp`) and reasoning-content
+ * extraction for models that expose an extended `thinking` block.
+ *
+ * @typeParam ModelName - Union of valid model identifier strings for the
+ *   concrete provider, used to type the model registry and enforce valid IDs.
+ */
 export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 	extends BaseProvider
 	implements SingleCompletionHandler
@@ -110,6 +124,18 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		}
 	}
 
+	/**
+	 * Sends a streaming chat completion request and yields typed chunks as they
+	 * arrive, covering text content, reasoning blocks, tool call deltas, and a
+	 * final usage summary with cost.
+	 *
+	 * @param systemPrompt - System-role content placed at the start of the message list.
+	 * @param messages - Conversation history in Anthropic message format; converted to
+	 *   OpenAI format before the request is sent.
+	 * @param metadata - Optional tool definitions, tool-choice preference, and
+	 *   parallel-tool-call settings forwarded to the API.
+	 * @returns An async generator that yields {@link ApiStream} chunks.
+	 */
 	override async *createMessage(
 		systemPrompt: string,
 		messages: Anthropic.Messages.MessageParam[],
@@ -219,6 +245,15 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		}
 	}
 
+	/**
+	 * Sends a single non-streaming user message and returns the model's text
+	 * response. Intended for lightweight, one-shot completions where streaming
+	 * overhead is unnecessary.
+	 *
+	 * @param prompt - The user message to send.
+	 * @returns The text content of the first completion choice, or an empty
+	 *   string if the model returned no content.
+	 */
 	async completePrompt(prompt: string): Promise<string> {
 		const { id: modelId, info: modelInfo } = this.getModel()
 
@@ -249,6 +284,14 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		}
 	}
 
+	/**
+	 * Resolves the active model, preferring the caller-supplied `apiModelId`
+	 * option when it matches a known entry in the provider's model registry, and
+	 * falling back to `defaultProviderModelId` otherwise.
+	 *
+	 * @returns An object with the resolved model `id` and its associated
+	 *   {@link ModelInfo} metadata.
+	 */
 	override getModel() {
 		const id =
 			this.options.apiModelId && this.options.apiModelId in this.providerModels

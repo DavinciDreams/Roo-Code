@@ -65,6 +65,7 @@ let cloudService: CloudService | undefined
 let authStateChangedHandler: ((data: { state: AuthState; previousState: AuthState }) => Promise<void>) | undefined
 let settingsUpdatedHandler: (() => void) | undefined
 let userInfoHandler: ((data: { userInfo: CloudUserInfo }) => Promise<void>) | undefined
+let cancelModelCacheRefresh: (() => void) | undefined
 
 /**
  * Check if we should auto-open the Roo Code sidebar after switching to a worktree.
@@ -100,7 +101,7 @@ async function checkWorktreeAutoOpen(
 			// Open the Roo Code sidebar with a slight delay to ensure UI is ready
 			setTimeout(async () => {
 				try {
-					await vscode.commands.executeCommand("moo-code.plusButtonClicked")
+					await vscode.commands.executeCommand("morse-code.plusButtonClicked")
 				} catch (error) {
 					outputChannel.appendLine(
 						`[Worktree] Error auto-opening sidebar: ${error instanceof Error ? error.message : String(error)}`,
@@ -424,8 +425,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	}
 
-	// Initialize background model cache refresh
-	initializeModelCacheRefresh()
+	// Initialize background model cache refresh; store cancel token for deactivation.
+	cancelModelCacheRefresh = initializeModelCacheRefresh()
 
 	return new API(outputChannel, provider, socketPath, enableLogging)
 }
@@ -433,6 +434,9 @@ export async function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated.
 export async function deactivate() {
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
+
+	cancelModelCacheRefresh?.()
+	cancelModelCacheRefresh = undefined
 
 	if (cloudService && CloudService.hasInstance()) {
 		try {

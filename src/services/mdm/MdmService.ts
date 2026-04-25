@@ -147,19 +147,19 @@ export class MdmService {
 
 		switch (platform) {
 			case "win32": {
-				// Windows: %ProgramData%\MooCode\mdm.json or mdm.dev.json
+				// Windows: %ProgramData%\MorseCode\mdm.json or mdm.dev.json
 				const programData = process.env.PROGRAMDATA || "C:\\ProgramData"
-				return path.join(programData, "MooCode", configFileName)
+				return path.join(programData, "MorseCode", configFileName)
 			}
 
 			case "darwin":
-				// macOS: /Library/Application Support/MooCode/mdm.json or mdm.dev.json
-				return `/Library/Application Support/MooCode/${configFileName}`
+				// macOS: /Library/Application Support/MorseCode/mdm.json or mdm.dev.json
+				return `/Library/Application Support/MorseCode/${configFileName}`
 
 			case "linux":
 			default:
-				// Linux: /etc/moo-code/mdm.json or mdm.dev.json
-				return `/etc/moo-code/${configFileName}`
+				// Linux: /etc/morse-code/mdm.json or mdm.dev.json
+				return `/etc/morse-code/${configFileName}`
 		}
 	}
 

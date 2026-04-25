@@ -32,9 +32,29 @@ interface SwarmProvider {
 	mailboxManager: MailboxManager
 }
 
+/**
+ * Tool that spawns a pool of named worker agents and distributes a task list
+ * across them using the mailbox coordination system.
+ *
+ * Workers are created either in-process (inside the VS Code extension host) or
+ * as headless CLI processes depending on the requested backend. Tasks are fed to
+ * idle workers one at a time; when the queue is exhausted each worker receives a
+ * shutdown signal. The tool resolves only after all workers have finished.
+ */
 export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 	readonly name = "spawn_swarm" as const
 
+	/**
+	 * Validates parameters, selects the appropriate worker backend, and runs the
+	 * swarm to completion before pushing a formatted result summary.
+	 *
+	 * @param params.workers - Ordered list of worker specs (name, mode, optional color).
+	 * @param params.task_list - Ordered list of task strings to distribute across workers.
+	 * @param params.abort_on_failure - When true, a single worker failure halts the entire swarm.
+	 * @param params.backend - Worker execution backend; `"in_process"` (default) or `"cli"`.
+	 * @param task - The owning Task instance, used to access the provider and mailbox manager.
+	 * @param callbacks - Standard tool callbacks for error handling and result delivery.
+	 */
 	async execute(params: SpawnSwarmParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { workers, task_list, abort_on_failure = false, backend = "in_process" } = params
 		const { handleError, pushToolResult } = callbacks
@@ -122,26 +142,40 @@ export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 		workerCount: number,
 	): Promise<void> {
 		let activeWorkers = workerCount
+		const activeWorkerIds = new Set<string>()
 
 		while (activeWorkers > 0) {
 			const msg = await mailboxManager.waitForLeaderMessage(sessionId, { timeoutMs: 120_000 })
-			if (!msg) break // safety timeout — workers will self-terminate via their own 5-min timeout
+
+			if (!msg) {
+				// Safety timeout — send shutdown to all known active workers before exiting.
+				console.warn(
+					`[SpawnSwarm] Timed out waiting for worker response — sending shutdown to ${activeWorkerIds.size} active worker(s).`,
+				)
+				for (const id of activeWorkerIds) {
+					await mailboxManager.shutdownWorker(sessionId, id).catch(() => {})
+				}
+				break
+			}
 
 			const workerId = msg.payload?.workerId as string | undefined
 			if (!workerId) continue
+
+			activeWorkerIds.add(workerId)
 
 			const nextTask = remainingTasks.shift()
 			if (nextTask) {
 				await mailboxManager.assignTask(sessionId, workerId, nextTask)
 			} else {
 				await mailboxManager.shutdownWorker(sessionId, workerId)
+				activeWorkerIds.delete(workerId)
 				activeWorkers--
 			}
 		}
 	}
 
 	// ---------------------------------------------------------------------------
-	// CLI backend path — workers run as headless moo-worker processes
+	// CLI backend path — workers run as headless morse-worker processes
 	// ---------------------------------------------------------------------------
 
 	private async runWithCliBackend(
@@ -217,6 +251,10 @@ export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 		return lines.join("\n")
 	}
 
+	/**
+	 * Streams a partial UI update that shows the expected worker count while the
+	 * model is still emitting the tool call parameters.
+	 */
 	override async handlePartial(task: Task, block: ToolUse<"spawn_swarm">): Promise<void> {
 		const workers = block.nativeArgs?.workers
 		const count = Array.isArray(workers) ? workers.length : "?"

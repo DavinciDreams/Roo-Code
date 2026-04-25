@@ -46,6 +46,14 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 
 		let baseURL = process.env.ROO_CODE_PROVIDER_URL ?? ""
 
+		// Guard: an explicitly empty env var would cause the OpenAI client to silently
+		// fall back to api.openai.com, routing Morse Cloud requests to the wrong server.
+		if (!baseURL) {
+			throw new Error(
+				"Morse Cloud provider URL is not configured. Set ROO_CODE_PROVIDER_URL or configure the provider URL in settings.",
+			)
+		}
+
 		// Ensure baseURL ends with /v1 for OpenAI client, but don't duplicate it
 		if (baseURL && !baseURL.endsWith("/v1")) {
 			baseURL = `${baseURL}/v1`
@@ -55,7 +63,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		// The provider-proxy server will return 401 if authentication fails.
 		super({
 			...options,
-			providerName: "Moo Code Cloud",
+			providerName: "Morse Code Cloud",
 			baseURL, // Already has /v1 suffix
 			apiKey: sessionToken,
 			defaultProviderModelId: rooDefaultModelId,
@@ -129,12 +137,12 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		messages: Anthropic.Messages.MessageParam[],
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
-		// Cloud features disabled — Moo Code provider is not available in this fork
-		throw new Error("Moo Code provider is not available in this fork. Cloud features have been disabled.")
+		// Cloud features disabled — Morse Code provider is not available in this fork
+		throw new Error("Morse Code provider is not available in this fork. Cloud features have been disabled.")
 	}
 
 	override async completePrompt(prompt: string): Promise<string> {
-		throw new Error("Moo Code provider is not available in this fork. Cloud features have been disabled.")
+		throw new Error("Morse Code provider is not available in this fork. Cloud features have been disabled.")
 	}
 
 	private async loadDynamicModels(baseURL: string, apiKey?: string): Promise<void> {
@@ -186,7 +194,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 	}
 
 	/**
-	 * Generate an image using Moo Code Cloud's image generation API
+	 * Generate an image using Morse Code Cloud's image generation API
 	 * @param prompt The text prompt for image generation
 	 * @param model The model to use for generation
 	 * @param inputImage Optional base64 encoded input image data URL
@@ -201,7 +209,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 	): Promise<ImageGenerationResult> {
 		return {
 			success: false,
-			error: "Moo Code provider is not available in this fork. Cloud features have been disabled.",
+			error: "Morse Code provider is not available in this fork. Cloud features have been disabled.",
 		}
 	}
 }

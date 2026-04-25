@@ -1,6 +1,6 @@
 # Teams
 
-This document is the technical reference for the Roo-Code Teams feature.
+This document is the technical reference for the Morse Code Teams feature.
 
 ## Overview
 
@@ -310,10 +310,10 @@ The optional `worktree` field on a `TeamAgentSpec` isolates that agent's file op
 
 **Values:**
 
-| Value            | Behavior                                                                            |
-| ---------------- | ----------------------------------------------------------------------------------- |
-| `"auto"`         | Roo-Code creates a new branch and worktree automatically. Branch name is generated. |
-| Any other string | Used directly as the branch name. Template variables are supported.                 |
+| Value            | Behavior                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| `"auto"`         | Morse Code creates a new branch and worktree automatically. Branch name is generated. |
+| Any other string | Used directly as the branch name. Template variables are supported.                   |
 
 **Template interpolation in `worktree`:**
 

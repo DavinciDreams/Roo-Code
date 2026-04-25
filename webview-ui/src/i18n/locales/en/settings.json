@@ -738,6 +738,21 @@
 		"enableSubfolderRules": {
 			"label": "Enable subfolder rules",
 			"description": "Recursively discover and load .roo/rules and AGENTS.md files from subdirectories. Useful for monorepos with per-package rules."
+		},
+		"sessionMemoryCompaction": {
+			"label": "Session Memory Compaction",
+			"configure": "Configure",
+			"configureTitle": "Open in VS Code Settings",
+			"description": "Extracts structured notes from your conversation and uses them when compacting context, avoiding an extra LLM call. Configure thresholds via",
+			"vsCodeSettingsLink": "VS Code Settings"
+		},
+		"compactHooks": {
+			"label": "Compact Hooks",
+			"configure": "Configure",
+			"configureTitle": "Open in VS Code Settings",
+			"description": "Run shell commands or HTTP webhooks before and after context condensation. Define hooks in",
+			"descriptionSuffix": "at the workspace root. Configure via",
+			"vsCodeSettingsLink": "VS Code Settings"
 		}
 	},
 	"terminal": {

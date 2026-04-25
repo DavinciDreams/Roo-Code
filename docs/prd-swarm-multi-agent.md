@@ -1,4 +1,4 @@
-# PRD: Swarm / True Multi-Agent Execution in Moo Code
+# PRD: Swarm / True Multi-Agent Execution in Morse Code
 
 **Status:** In progress — P1, PT, P2, P3, P4, P5 shipped  
 **Author:** davincidreams  
@@ -10,7 +10,7 @@
 
 ## 1. Problem Statement
 
-~~Moo Code today runs tasks **strictly sequentially**.~~ **Phase 1 shipped** — `clineStack` has
+~~Morse Code today runs tasks **strictly sequentially**.~~ **Phase 1 shipped** — `clineStack` has
 been replaced with `tasks: Map<string, Task>` and true concurrent fan-out is available via
 `spawn_parallel_tasks` with `concurrent: true`. The remaining problem is the higher phases:
 agent identity, cross-agent communication, permission bridging, and external process backends.
@@ -24,7 +24,7 @@ The original problem for context:
 > longest subtask.
 
 The goal of this PRD is to close the gap with claude-code's **swarm/teammate** architecture and
-deliver genuine multi-instance, multi-agent execution inside Moo Code.
+deliver genuine multi-instance, multi-agent execution inside Morse Code.
 
 ---
 
@@ -72,7 +72,7 @@ export function runWithTeammateContext<T>(ctx: TeammateContext, fn: () => T): T 
 }
 ```
 
-Note: Moo Code `Task` instances are already class-isolated (each holds its own messages, API
+Note: Morse Code `Task` instances are already class-isolated (each holds its own messages, API
 client, history). `AsyncLocalStorage` is needed primarily for utility functions that look up
 "current context" without being passed an explicit reference.
 
@@ -164,7 +164,7 @@ export interface AgentIdentity {
   teamName: string
   color: AgentColorName
   isLeader: boolean
-  taskId: string           // linked Moo Code task ID
+  taskId: string           // linked Morse Code task ID
 }
 
 export interface SwarmSession {
@@ -294,7 +294,7 @@ For full OS-level isolation (separate heaps, separate git worktrees):
 **Option A — Headless CLI worker** (lighter, recommended first):
 
 ```bash
-moo-worker \
+morse-worker \
   --agent-id researcher@my-team \
   --team-name my-team \
   --parent-session $SESSION_ID \
@@ -326,7 +326,7 @@ export interface IWorkerBackend {
 
 // Priority order:
 // 1. InProcessBackend  — default; no extra dependencies
-// 2. CliWorkerBackend  — opt-in; requires moo-worker binary
+// 2. CliWorkerBackend  — opt-in; requires morse-worker binary
 // 3. VsCodeWindowBackend — opt-in; spawns new VS Code window
 ```
 
@@ -440,7 +440,7 @@ When a worker requests tool approval, the existing tool-ask dialog renders a col
 
 ### 7.3 Swarm activity log
 
-The Output Channel gains a `Moo Code Swarm` channel that logs all cross-agent messages,
+The Output Channel gains a `Morse Code Swarm` channel that logs all cross-agent messages,
 idle transitions, and permission events in real time.
 
 ---
@@ -512,7 +512,7 @@ See [`docs/teams.md`](./teams.md) for the full reference.
 | P3    | In-process mailbox  | `InMemoryMailbox`, idle loop in `Task`, `idle_notification` / `task_assignment` messages                               | Planned     | Medium (3–5 days) |
 | P4    | Permission bridge   | `LeaderPermissionBridge`, worker badge in tool-ask UI                                                                  | Planned     | Medium (3–5 days) |
 | P5    | File mailbox        | `FileMailbox` with lockfile; cross-process swarm works                                                                 | Planned     | Small (2–3 days)  |
-| P6    | External backends   | `CliWorkerBackend`; `moo-worker` entry point; `spawn_swarm` tool                                                       | Planned     | Large (1–2 weeks) |
+| P6    | External backends   | `CliWorkerBackend`; `morse-worker` entry point; `spawn_swarm` tool                                                     | Planned     | Large (1–2 weeks) |
 
 ---
 
@@ -536,11 +536,11 @@ See [`docs/teams.md`](./teams.md) for the full reference.
     - `backends/registry.ts` — pluggable backend selection
     - `teammateMailbox.ts` — file-based mailbox with lockfile
     - `leaderPermissionBridge.ts` — module-level permission injection
-- **Current Moo Code parallel implementation:**
+- **Current Morse Code parallel implementation:**
     - `src/core/webview/ClineProvider.ts` — `delegateParentAndOpenChild`, `reopenParentFromDelegation`
     - `src/core/tools/SpawnParallelTasksTool.ts`
     - `packages/types/src/history.ts` — `parallelQueue`, `parallelResults`
-- **Previous improvements (merged in `moo-code-standalone`):**
+- **Previous improvements (merged in `morse-code-standalone`):**
     - Worktree orphan detection
     - `abortOnChildFailure` flag
     - `getParallelTaskStatus()` introspection API

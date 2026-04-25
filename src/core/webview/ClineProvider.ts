@@ -1331,7 +1331,7 @@ export class ClineProvider
 						window.AUDIO_BASE_URI = "${audioUri}"
 						window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 					</script>
-					<title>Moo Code</title>
+					<title>Morse Code</title>
 				</head>
 				<body>
 					<div id="root"></div>
@@ -1410,7 +1410,7 @@ export class ClineProvider
 				window.AUDIO_BASE_URI = "${audioUri}"
 				window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 			</script>
-            <title>Moo Code</title>
+            <title>Morse Code</title>
           </head>
           <body>
             <noscript>You need to enable JavaScript to run this app.</noscript>
@@ -4105,7 +4105,7 @@ export class ClineProvider
 
 			const paths = orphans.map((o) => o.worktreePath).join(", ")
 			const action = await vscode.window.showWarningMessage(
-				`Moo Code detected ${orphans.length} orphaned worktree(s) from previous sessions:\n${paths}`,
+				`Morse Code detected ${orphans.length} orphaned worktree(s) from previous sessions:\n${paths}`,
 				"Clean up",
 				"Ignore",
 			)

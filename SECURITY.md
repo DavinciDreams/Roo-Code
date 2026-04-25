@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We actively patch only the most recent release of Moo Code. Older versions receive fixes at our discretion.
+We actively patch only the most recent release of Morse Code. Older versions receive fixes at our discretion.
 
 ## Reporting a Vulnerability
 
@@ -14,4 +14,4 @@ Please open a GitHub Issue or Security Advisory with:
 
 We acknowledge reports within 48 hours and aim to release a fix or mitigation within 30 days. While we work on a resolution, please keep the details private.
 
-Thank you for helping us keep Moo Code users safe.
+Thank you for helping us keep Morse Code users safe.

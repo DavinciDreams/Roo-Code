@@ -36,9 +36,30 @@ interface TeamPhaseProvider {
 	}): Promise<Array<{ taskId: string; summary: string; error?: string }>>
 }
 
+/**
+ * Tool that executes one named phase of a Teams workflow.
+ *
+ * It loads the team configuration from the workspace's `.roo/teams/` directory,
+ * resolves the requested phase, optionally prepends shared team conventions, and
+ * dispatches agents according to the phase definition. Agents may run
+ * concurrently (all started simultaneously via `spawnConcurrentChildren`) or
+ * sequentially (drained one at a time via `delegateParentAndOpenChild`).
+ */
 export class RunTeamPhaseTool extends BaseTool<"run_team_phase"> {
 	readonly name = "run_team_phase" as const
 
+	/**
+	 * Resolves the team config and phase, interpolates per-agent instructions,
+	 * requests user approval, and then dispatches the agents — concurrently or
+	 * sequentially — according to the phase's `concurrent` flag.
+	 *
+	 * @param params.team_slug - Identifier that maps to `.roo/teams/<slug>.json`.
+	 * @param params.phase_name - Name of the phase within the team config to execute.
+	 * @param params.task - High-level task description interpolated into agent instructions via `{{task}}`.
+	 * @param params.context - Optional additional context interpolated via `{{context}}`.
+	 * @param task - The owning Task instance, used to access the provider and workspace path.
+	 * @param callbacks - Standard tool callbacks for approval, error handling, and result delivery.
+	 */
 	async execute(params: RunTeamPhaseParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { team_slug, phase_name, task: taskDesc, context } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
@@ -163,6 +184,10 @@ export class RunTeamPhaseTool extends BaseTool<"run_team_phase"> {
 		}
 	}
 
+	/**
+	 * Streams a placeholder UI update while the team slug and phase name are
+	 * still being received from the model.
+	 */
 	override async handlePartial(task: Task, block: ToolUse<"run_team_phase">): Promise<void> {
 		const partialMessage = JSON.stringify({ tool: "runTeamPhase" })
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})

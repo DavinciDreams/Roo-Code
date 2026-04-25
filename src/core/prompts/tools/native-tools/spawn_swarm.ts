@@ -16,7 +16,7 @@ Unlike run_team_phase (which pushes one task per agent per phase), spawn_swarm l
 
 **Backend options:**
 - "in_process" (default): workers run inside VS Code — zero overhead, same extension context
-- "cli": workers run as separate moo-worker processes — full OS isolation, requires binary
+- "cli": workers run as separate morse-worker processes — full OS isolation, requires binary
 
 CRITICAL: This tool MUST be called alone. Do NOT call it alongside other tools in the same turn.`
 
@@ -70,7 +70,7 @@ export default {
 					type: "string",
 					enum: ["in_process", "cli"],
 					description:
-						'"in_process" (default): workers run inside VS Code. "cli": spawns headless moo-worker processes.',
+						'"in_process" (default): workers run inside VS Code. "cli": spawns headless morse-worker processes.',
 				},
 			},
 			required: ["workers", "task_list"],
