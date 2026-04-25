@@ -120,6 +120,12 @@ export type NativeToolArgs = {
 	use_mcp_tool: { server_name: string; tool_name: string; arguments?: Record<string, unknown> }
 	write_to_file: { path: string; content: string }
 	run_team_phase: { team_slug: string; phase_name: string; task: string; context?: string | null }
+	spawn_swarm: {
+		workers: Array<{ name: string; mode: string; color?: string }>
+		task_list: string[]
+		abort_on_failure?: boolean
+		backend?: "in_process" | "cli"
+	}
 	// Add more tools as they are migrated to native protocol
 }
 
@@ -289,6 +295,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	switch_mode: "switch modes",
 	new_task: "create new task",
 	spawn_parallel_tasks: "spawn parallel tasks",
+	spawn_swarm: "spawn swarm",
 	run_team_phase: "run team phase",
 	codebase_search: "codebase search",
 	update_todo_list: "update todo list",
@@ -314,7 +321,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["use_mcp_tool", "access_mcp_resource"],
 	},
 	modes: {
-		tools: ["switch_mode", "new_task", "run_team_phase"],
+		tools: ["switch_mode", "new_task", "run_team_phase", "spawn_swarm"],
 		alwaysAvailable: true,
 	},
 }

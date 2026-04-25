@@ -94,6 +94,17 @@ export class MailboxManager {
 	}
 
 	/**
+	 * Waits for the next `idle_notification` sent by any worker to the leader.
+	 * Used by the spawn_swarm coordination loop to know when a worker is free.
+	 * Returns null on timeout or when no mailbox exists for the session.
+	 */
+	async waitForLeaderMessage(sessionId: string, opts?: { timeoutMs?: number }): Promise<TeammateMessage | null> {
+		const mailbox = this.mailboxes.get(sessionId)
+		if (!mailbox) return null
+		return mailbox.waitForMessage(`leader:${sessionId}`, ["idle_notification"], opts)
+	}
+
+	/**
 	 * Waits for the worker's next `task_assignment` or `shutdown_request`.
 	 * Returns null if the timeout fires first or the session has no mailbox.
 	 */

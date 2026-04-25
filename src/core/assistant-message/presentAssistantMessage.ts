@@ -33,6 +33,7 @@ import { attemptCompletionTool, AttemptCompletionCallbacks } from "../tools/Atte
 import { newTaskTool } from "../tools/NewTaskTool"
 import { spawnParallelTasksTool } from "../tools/SpawnParallelTasksTool"
 import { runTeamPhaseTool } from "../tools/RunTeamPhaseTool"
+import { spawnSwarmTool } from "../tools/SpawnSwarmTool"
 import { updateTodoListTool } from "../tools/UpdateTodoListTool"
 import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
@@ -873,6 +874,15 @@ export async function presentAssistantMessage(cline: Task) {
 				case "run_team_phase":
 					await checkpointSaveAndMark(cline)
 					await runTeamPhaseTool.handle(cline, block as ToolUse<"run_team_phase">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+						toolCallId: block.id,
+					})
+					break
+				case "spawn_swarm":
+					await checkpointSaveAndMark(cline)
+					await spawnSwarmTool.handle(cline, block as ToolUse<"spawn_swarm">, {
 						askApproval,
 						handleError,
 						pushToolResult,
