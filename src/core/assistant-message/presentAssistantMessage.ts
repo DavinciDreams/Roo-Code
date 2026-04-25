@@ -31,6 +31,7 @@ import { switchModeTool } from "../tools/SwitchModeTool"
 import { attemptCompletionTool, AttemptCompletionCallbacks } from "../tools/AttemptCompletionTool"
 import { newTaskTool } from "../tools/NewTaskTool"
 import { spawnParallelTasksTool } from "../tools/SpawnParallelTasksTool"
+import { runTeamPhaseTool } from "../tools/RunTeamPhaseTool"
 import { updateTodoListTool } from "../tools/UpdateTodoListTool"
 import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
@@ -821,6 +822,15 @@ export async function presentAssistantMessage(cline: Task) {
 				case "spawn_parallel_tasks":
 					await checkpointSaveAndMark(cline)
 					await spawnParallelTasksTool.handle(cline, block as ToolUse<"spawn_parallel_tasks">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+						toolCallId: block.id,
+					})
+					break
+				case "run_team_phase":
+					await checkpointSaveAndMark(cline)
+					await runTeamPhaseTool.handle(cline, block as ToolUse<"run_team_phase">, {
 						askApproval,
 						handleError,
 						pushToolResult,

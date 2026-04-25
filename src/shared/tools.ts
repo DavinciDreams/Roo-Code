@@ -81,6 +81,9 @@ export const toolParamNames = [
 	// read_file legacy format parameter (backward compatibility)
 	"files",
 	"line_ranges",
+	// run_team_phase parameters
+	"team_slug",
+	"phase_name",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -116,6 +119,7 @@ export type NativeToolArgs = {
 	update_todo_list: { todos: string }
 	use_mcp_tool: { server_name: string; tool_name: string; arguments?: Record<string, unknown> }
 	write_to_file: { path: string; content: string }
+	run_team_phase: { team_slug: string; phase_name: string; task: string; context?: string | null }
 	// Add more tools as they are migrated to native protocol
 }
 
@@ -285,6 +289,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	switch_mode: "switch modes",
 	new_task: "create new task",
 	spawn_parallel_tasks: "spawn parallel tasks",
+	run_team_phase: "run team phase",
 	codebase_search: "codebase search",
 	update_todo_list: "update todo list",
 	run_slash_command: "run slash command",
@@ -309,7 +314,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["use_mcp_tool", "access_mcp_resource"],
 	},
 	modes: {
-		tools: ["switch_mode", "new_task"],
+		tools: ["switch_mode", "new_task", "run_team_phase"],
 		alwaysAvailable: true,
 	},
 }
