@@ -20,6 +20,8 @@ export interface WorkerSpawnConfig {
 	workspacePath?: string
 	/** Override the model used by this worker */
 	model?: string
+	/** Explicit path to the moo-worker binary. Defaults to dist/workers/moo-worker.js relative to the extension bundle. */
+	workerBinPath?: string
 }
 
 export interface WorkerSpawnResult {

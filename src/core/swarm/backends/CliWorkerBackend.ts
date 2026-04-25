@@ -20,7 +20,9 @@ export class CliWorkerBackend implements IWorkerBackend {
 	private exitPromises = new Map<string, Promise<void>>()
 
 	async spawn(config: WorkerSpawnConfig): Promise<WorkerSpawnResult> {
-		const binPath = path.resolve(__dirname, "..", "..", "..", "workers", "moo-worker.js")
+		// In the bundled extension (dist/extension.js), __dirname = dist/.
+		// Workers are compiled to dist/workers/ alongside the main bundle.
+		const binPath = config.workerBinPath ?? path.resolve(__dirname, "workers", "moo-worker.js")
 
 		const args = [
 			binPath,

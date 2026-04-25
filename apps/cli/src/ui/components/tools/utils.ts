@@ -89,6 +89,10 @@ export function getToolDisplayName(toolName: string): string {
 		// TODO operations
 		update_todo_list: "Update TODO List",
 		updateTodoList: "Update TODO List",
+
+		// Swarm / multi-agent operations
+		spawn_swarm: "Spawn Swarm",
+		run_team_phase: "Run Team Phase",
 	}
 
 	return displayNames[toolName] || toolName
@@ -141,6 +145,10 @@ export function getToolIconName(toolName: string): IconName {
 		// TODO operations
 		update_todo_list: "check",
 		updateTodoList: "check",
+
+		// Swarm / multi-agent operations
+		spawn_swarm: "gear",
+		run_team_phase: "switch",
 	}
 
 	return iconNames[toolName] || "gear"

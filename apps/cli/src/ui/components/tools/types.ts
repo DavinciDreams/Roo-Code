@@ -5,7 +5,7 @@ export interface ToolRendererProps {
 	rawContent?: string
 }
 
-export type ToolCategory = "file-read" | "file-write" | "search" | "command" | "mode" | "completion" | "other"
+export type ToolCategory = "file-read" | "file-write" | "search" | "command" | "mode" | "completion" | "swarm" | "other"
 
 export function getToolCategory(toolName: string): ToolCategory {
 	const fileReadTools = ["readFile", "read_file", "skill", "listFilesTopLevel", "listFilesRecursive", "list_files"]
@@ -23,6 +23,7 @@ export function getToolCategory(toolName: string): ToolCategory {
 	const commandTools = ["execute_command", "executeCommand"]
 	const modeTools = ["switchMode", "switch_mode", "newTask", "new_task", "finishTask"]
 	const completionTools = ["attempt_completion", "attemptCompletion", "ask_followup_question", "askFollowupQuestion"]
+	const swarmTools = ["spawn_swarm", "run_team_phase"]
 
 	if (fileReadTools.includes(toolName)) return "file-read"
 	if (fileWriteTools.includes(toolName)) return "file-write"
@@ -30,5 +31,6 @@ export function getToolCategory(toolName: string): ToolCategory {
 	if (commandTools.includes(toolName)) return "command"
 	if (modeTools.includes(toolName)) return "mode"
 	if (completionTools.includes(toolName)) return "completion"
+	if (swarmTools.includes(toolName)) return "swarm"
 	return "other"
 }
