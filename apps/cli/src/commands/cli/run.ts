@@ -286,11 +286,27 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 	extensionHostOptions.apiKey =
 		extensionHostOptions.apiKey || flagOptions.apiKey || getApiKeyFromEnv(extensionHostOptions.provider)
 
+	// For Anthropic with no API key, fall back to stored OAuth token (Claude Code Max).
+	if (extensionHostOptions.provider === "anthropic" && !extensionHostOptions.apiKey) {
+		const { getValidAnthropicToken } = await import("@/lib/auth/anthropic-oauth.js")
+		const oauthToken = await getValidAnthropicToken()
+		if (oauthToken) {
+			extensionHostOptions.apiKey = oauthToken
+			extensionHostOptions.anthropicUseAuthToken = true
+		}
+	}
+
 	if (!extensionHostOptions.apiKey) {
 		if (extensionHostOptions.provider === "roo") {
 			console.error("[CLI] Error: Authentication with Roo Code Cloud failed or was cancelled.")
 			console.error("[CLI] Please run: roo auth login")
 			console.error("[CLI] Or use --api-key to provide your own API key.")
+		} else if (extensionHostOptions.provider === "anthropic") {
+			console.error("[CLI] Error: No Anthropic API key or OAuth token found.")
+			console.error("[CLI] Options:")
+			console.error("[CLI]   roo auth anthropic login  (Claude Code Max OAuth)")
+			console.error("[CLI]   --api-key <key>           (raw API key)")
+			console.error("[CLI]   ANTHROPIC_API_KEY=<key>   (environment variable)")
 		} else {
 			console.error(
 				`[CLI] Error: No API key provided. Use --api-key or set the appropriate environment variable.`,

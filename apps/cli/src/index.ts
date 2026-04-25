@@ -12,6 +12,9 @@ import {
 	listModels,
 	listSessions,
 	upgrade,
+	anthropicLogin,
+	anthropicLogout,
+	anthropicStatus,
 } from "@/commands/index.js"
 
 const program = new Command()
@@ -162,6 +165,36 @@ authCommand
 	.option("-v, --verbose", "Enable verbose output", false)
 	.action(async (options: { verbose: boolean }) => {
 		const result = await status({ verbose: options.verbose })
+		process.exit(result.authenticated ? 0 : 1)
+	})
+
+const anthropicCommand = authCommand
+	.command("anthropic")
+	.description("Manage Anthropic OAuth authentication (Claude Code Max)")
+
+anthropicCommand
+	.command("login")
+	.description("Authenticate with Anthropic via OAuth (Claude Code Max)")
+	.option("-v, --verbose", "Enable verbose output", false)
+	.action(async (options: { verbose: boolean }) => {
+		const result = await anthropicLogin({ verbose: options.verbose })
+		process.exit(result.success ? 0 : 1)
+	})
+
+anthropicCommand
+	.command("logout")
+	.description("Remove stored Anthropic OAuth credentials")
+	.action(async () => {
+		const result = await anthropicLogout()
+		process.exit(result.success ? 0 : 1)
+	})
+
+anthropicCommand
+	.command("status")
+	.description("Show Anthropic OAuth authentication status")
+	.option("-v, --verbose", "Enable verbose output", false)
+	.action(async (options: { verbose: boolean }) => {
+		const result = await anthropicStatus({ verbose: options.verbose })
 		process.exit(result.authenticated ? 0 : 1)
 	})
 
