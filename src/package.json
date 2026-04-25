@@ -429,6 +429,100 @@
 					"default": false,
 					"description": "%settings.debugProxy.tlsInsecure.description%",
 					"markdownDescription": "%settings.debugProxy.tlsInsecure.description%"
+				},
+				"moo-code.microCompactEnabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "%settings.microCompactEnabled.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.microCompactThreshold": {
+					"type": "number",
+					"default": 5,
+					"minimum": 1,
+					"maximum": 50,
+					"description": "%settings.microCompactThreshold.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.microCompactKeepRecent": {
+					"type": "number",
+					"default": 3,
+					"minimum": 1,
+					"maximum": 20,
+					"description": "%settings.microCompactKeepRecent.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.sessionMemoryCompactEnabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "%settings.sessionMemoryCompactEnabled.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.sessionMemoryCompactMinTokens": {
+					"type": "number",
+					"default": 10000,
+					"minimum": 1000,
+					"maximum": 100000,
+					"description": "%settings.sessionMemoryCompactMinTokens.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.sessionMemoryCompactMaxTokens": {
+					"type": "number",
+					"default": 50000,
+					"minimum": 10000,
+					"maximum": 200000,
+					"description": "%settings.sessionMemoryCompactMaxTokens.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.sessionMemoryMinTokensToInit": {
+					"type": "number",
+					"default": 10000,
+					"minimum": 1000,
+					"maximum": 100000,
+					"description": "%settings.sessionMemoryMinTokensToInit.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.sessionMemoryMinTokensBetweenUpdate": {
+					"type": "number",
+					"default": 5000,
+					"minimum": 1000,
+					"maximum": 50000,
+					"description": "%settings.sessionMemoryMinTokensBetweenUpdate.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.sessionMemoryToolCallsBetweenUpdates": {
+					"type": "number",
+					"default": 3,
+					"minimum": 1,
+					"maximum": 20,
+					"description": "%settings.sessionMemoryToolCallsBetweenUpdates.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.compactHooksEnabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "%settings.compactHooksEnabled.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.compactHooksPath": {
+					"type": "string",
+					"default": "",
+					"description": "%settings.compactHooksPath.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.promptTooLongRetryEnabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "%settings.promptTooLongRetryEnabled.description%",
+					"icon": "settings-gear"
+				},
+				"moo-code.promptTooLongMaxRetries": {
+					"type": "number",
+					"default": 2,
+					"minimum": 0,
+					"maximum": 5,
+					"description": "%settings.promptTooLongMaxRetries.description%",
+					"icon": "settings-gear"
 				}
 			}
 		}

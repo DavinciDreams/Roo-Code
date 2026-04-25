@@ -10,6 +10,8 @@ const MESSAGE_PARAMETER_DESCRIPTION = `Initial user instructions or context for 
 
 const TODOS_PARAMETER_DESCRIPTION = `Optional initial todo list written as a markdown checklist; required when the workspace mandates todos`
 
+const WORKTREE_PARAMETER_DESCRIPTION = `Optional git worktree for filesystem isolation. Use "auto" to create a new branch+worktree automatically, or provide a branch name (e.g., "feat/my-branch") to check out that branch in an isolated worktree. Omit when the task doesn't need its own filesystem scope.`
+
 export default {
 	type: "function",
 	function: {
@@ -31,8 +33,12 @@ export default {
 					type: ["string", "null"],
 					description: TODOS_PARAMETER_DESCRIPTION,
 				},
+				worktree: {
+					type: ["string", "null"],
+					description: WORKTREE_PARAMETER_DESCRIPTION,
+				},
 			},
-			required: ["mode", "message", "todos"],
+			required: ["mode", "message", "todos", "worktree"],
 			additionalProperties: false,
 		},
 	},

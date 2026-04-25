@@ -99,6 +99,8 @@ export interface CreateTaskOptions {
 	/** Whether to start the task loop immediately (default: true).
 	 *  When false, the caller must invoke `task.start()` manually. */
 	startTask?: boolean
+	/** Override the workspace path for this task (e.g., a git worktree). Takes priority over parent task's path. */
+	workspacePath?: string
 }
 
 export enum TaskStatus {

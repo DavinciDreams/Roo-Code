@@ -461,6 +461,7 @@ export interface WebviewMessage {
 		| "ttsEnabled"
 		| "ttsSpeed"
 		| "openKeyboardShortcuts"
+		| "openVSCodeSettings"
 		| "openMcpSettings"
 		| "openProjectMcpSettings"
 		| "restartMcpServer"

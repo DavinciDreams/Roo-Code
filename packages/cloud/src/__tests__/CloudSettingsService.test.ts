@@ -105,7 +105,7 @@ describe("CloudSettingsService", () => {
 
 	describe("updateUserSettings", () => {
 		it("should return false when cloud features are disabled", async () => {
-			const result = await cloudSettingsService.updateUserSettings({ someSetting: "value" })
+			const result = await cloudSettingsService.updateUserSettings({})
 			expect(result).toBe(false)
 		})
 	})

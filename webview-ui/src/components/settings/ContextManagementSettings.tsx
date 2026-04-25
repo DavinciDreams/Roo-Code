@@ -472,6 +472,68 @@ export const ContextManagementSettings = ({
 					/>
 				</SearchableSetting>
 
+				{/* Session Memory */}
+				<SearchableSetting
+					settingId="context-session-memory"
+					section="contextManagement"
+					label="Session Memory Compaction">
+					<div className="flex justify-between items-center">
+						<span className="block font-medium">Session Memory Compaction</span>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() =>
+								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.sessionMemory" })
+							}
+							title="Open in VS Code Settings">
+							<span className="codicon codicon-settings-gear mr-1" />
+							Configure
+						</Button>
+					</div>
+					<div className="text-vscode-descriptionForeground text-sm mt-1">
+						Extracts structured notes from your conversation and uses them when compacting context, avoiding
+						an extra LLM call. Configure thresholds via{" "}
+						<button
+							className="underline cursor-pointer bg-transparent border-0 text-vscode-textLink-foreground p-0"
+							onClick={() =>
+								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.sessionMemory" })
+							}>
+							VS Code Settings
+						</button>
+						.
+					</div>
+				</SearchableSetting>
+
+				{/* Compact Hooks */}
+				<SearchableSetting settingId="context-compact-hooks" section="contextManagement" label="Compact Hooks">
+					<div className="flex justify-between items-center">
+						<span className="block font-medium">Compact Hooks</span>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() =>
+								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.compactHooks" })
+							}
+							title="Open in VS Code Settings">
+							<span className="codicon codicon-settings-gear mr-1" />
+							Configure
+						</Button>
+					</div>
+					<div className="text-vscode-descriptionForeground text-sm mt-1">
+						Run shell commands or HTTP webhooks before and after context condensation. Define hooks in{" "}
+						<code className="text-xs bg-vscode-textCodeBlock-background px-1 rounded">.roo-hooks.json</code>{" "}
+						at the workspace root. Configure via{" "}
+						<button
+							className="underline cursor-pointer bg-transparent border-0 text-vscode-textLink-foreground p-0"
+							onClick={() =>
+								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.compactHooks" })
+							}>
+							VS Code Settings
+						</button>
+						.
+					</div>
+				</SearchableSetting>
+
 				{/* Auto Condense Context */}
 				<SearchableSetting
 					settingId="context-auto-condense"

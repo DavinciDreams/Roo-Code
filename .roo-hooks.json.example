@@ -1,0 +1,59 @@
+{
+	"_comment": "Example hooks configuration file for Roo Code. Rename to .roo-hooks.json to use.",
+	"_comment2": "Hooks are executed before (PreCompact) and after (PostCompact) context condensation.",
+	"_comment3": "Each hook can be a command (shell command) or http (HTTP POST request).",
+	"PreCompact": [
+		{
+			"matcher": "auto",
+			"hooks": [
+				{
+					"id": "log-pre-compact",
+					"type": "command",
+					"description": "Log before automatic condensation",
+					"command": "echo 'Pre-compact hook triggered at $(date)'",
+					"shell": "bash",
+					"timeout": 10
+				}
+			]
+		},
+		{
+			"matcher": "manual",
+			"hooks": [
+				{
+					"id": "log-manual-compact",
+					"type": "command",
+					"description": "Log before manual condensation",
+					"command": "echo 'Manual compact triggered'",
+					"shell": "bash"
+				}
+			]
+		}
+	],
+	"PostCompact": [
+		{
+			"matcher": "auto",
+			"hooks": [
+				{
+					"id": "log-post-compact",
+					"type": "command",
+					"description": "Log after automatic condensation",
+					"command": "echo 'Post-compact hook: Summary length is ${#HOOK_INPUT}'",
+					"shell": "bash",
+					"timeout": 10
+				},
+				{
+					"id": "notify-webhook",
+					"type": "http",
+					"description": "Send notification to webhook",
+					"url": "https://example.com/webhook",
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/json",
+						"Authorization": "Bearer YOUR_TOKEN"
+					},
+					"timeout": 30
+				}
+			]
+		}
+	]
+}

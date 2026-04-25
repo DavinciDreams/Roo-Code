@@ -123,6 +123,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		return this.currentReasoningDetails.length > 0 ? this.currentReasoningDetails : undefined
 	}
 
+	// eslint-disable-next-line require-yield
 	override async *createMessage(
 		systemPrompt: string,
 		messages: Anthropic.Messages.MessageParam[],

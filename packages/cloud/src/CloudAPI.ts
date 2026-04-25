@@ -1,10 +1,7 @@
-import { z } from "zod"
-
-import { type AuthService, type ShareVisibility, type ShareResponse, shareResponseSchema } from "@roo-code/types"
+import { type AuthService, type ShareVisibility, type ShareResponse } from "@roo-code/types"
 
 import { getRooCodeApiUrl } from "./config.js"
-import { getUserAgent } from "./utils.js"
-import { AuthenticationError, CloudAPIError, NetworkError, TaskNotFoundError } from "./errors.js"
+import { CloudAPIError } from "./errors.js"
 
 interface CloudAPIRequestOptions extends Omit<RequestInit, "headers"> {
 	timeout?: number

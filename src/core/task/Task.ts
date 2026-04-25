@@ -126,7 +126,14 @@ import {
 	checkpointDiff,
 } from "../checkpoints"
 import { processUserContentMentions } from "../mentions/processUserContentMentions"
-import { getMessagesSinceLastSummary, summarizeConversation, getEffectiveApiHistory } from "../condense"
+import {
+	getMessagesSinceLastSummary,
+	summarizeConversation,
+	getEffectiveApiHistory,
+	extractSessionMemory,
+} from "../condense"
+import { estimateMessageTokens } from "../condense/sessionMemory"
+import { createHookSystem, type HookSystem } from "../hooks"
 import { MessageQueueService } from "../message-queue/MessageQueueService"
 import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
@@ -417,6 +424,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// MessageManager for high-level message operations (lazy initialized)
 	private _messageManager?: MessageManager
 
+	// Session Memory (per-task, avoids module-level global state)
+	private sessionMemoryContent: string | undefined
+	private sessionMemoryLastMessageId: string | undefined
+	private sessionMemoryTokensAtLastExtraction = 0
+	private sessionMemoryInitialized = false
+	private sessionMemoryToolCallsSinceUpdate = 0
+	private sessionMemoryExtracting = false
+
 	constructor({
 		provider,
 		apiConfiguration,
@@ -467,10 +482,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			images: historyItem ? [] : images,
 		}
 
-		// Normal use-case is usually retry similar history task with new workspace.
-		this.workspacePath = parentTask
-			? parentTask.workspacePath
-			: (workspacePath ?? getWorkspacePath(path.join(os.homedir(), "Desktop")))
+		// Explicit workspacePath always wins (e.g., worktree tasks). Falls back to parent's path, then default.
+		this.workspacePath =
+			workspacePath ?? parentTask?.workspacePath ?? getWorkspacePath(path.join(os.homedir(), "Desktop"))
 
 		this.instanceId = crypto.randomUUID().slice(0, 8)
 		this.taskNumber = -1
@@ -3614,6 +3628,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						this.consecutiveNoToolUseCount = 0
 					}
 
+					// Fire-and-forget session memory extraction after each tool turn.
+					// Runs in background and never blocks the agentic loop.
+					void this.maybeExtractSessionMemory()
+
 					// Push to stack if there's content OR if we're paused waiting for a subtask.
 					// When paused, we push an empty item so the loop continues to the pause check.
 					if (this.userMessageContent.length > 0 || this.isPaused) {
@@ -3887,6 +3905,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// Generate environment details to include in the condensed summary
 			const environmentDetails = await getEnvironmentDetails(this, true)
 
+			const forcedCfg = vscode.workspace.getConfiguration(Package.name)
+			const forcedHooksEnabled = forcedCfg.get<boolean>("compactHooksEnabled", true)
+			const forcedHooksPath = forcedCfg.get<string>("compactHooksPath") || undefined
+			const forcedHookSystem: HookSystem | undefined = forcedHooksEnabled
+				? createHookSystem(this.cwd, true, forcedHooksPath)
+				: undefined
+
 			// Force aggressive truncation by keeping only 75% of the conversation history
 			const truncateResult = await manageContext({
 				messages: this.apiConversationHistory,
@@ -3902,6 +3927,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				currentProfileId,
 				metadata,
 				environmentDetails,
+				sessionMemory: this.sessionMemoryContent,
+				sessionMemoryCompactEnabled: forcedCfg.get<boolean>("sessionMemoryCompactEnabled", true),
+				lastSummarizedMessageId: this.sessionMemoryLastMessageId,
+				hookSystem: forcedHookSystem,
+				promptTooLongRetryEnabled: true,
+				promptTooLongMaxRetries: 2,
 			})
 
 			if (truncateResult.messages !== this.apiConversationHistory) {
@@ -3981,6 +4012,66 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 			// Finalize the partial message so the UI doesn't keep rendering an in-progress spinner.
 			await this.say("api_req_rate_limit_wait", undefined, undefined, false)
+		}
+	}
+
+	/**
+	 * Conditionally extracts session memory from the current conversation history.
+	 * Runs asynchronously and fire-and-forget — never blocks the main agentic loop.
+	 * Guards against concurrent extractions and respects the configured thresholds.
+	 */
+	private async maybeExtractSessionMemory(): Promise<void> {
+		if (this.sessionMemoryExtracting) {
+			return
+		}
+
+		const cfg = vscode.workspace.getConfiguration(Package.name)
+		if (!cfg.get<boolean>("sessionMemoryCompactEnabled", true)) {
+			return
+		}
+
+		const minTokensToInit = cfg.get<number>("sessionMemoryMinTokensToInit", 10000)
+		const minTokensBetweenUpdate = cfg.get<number>("sessionMemoryMinTokensBetweenUpdate", 5000)
+		const toolCallsBetweenUpdates = cfg.get<number>("sessionMemoryToolCallsBetweenUpdates", 3)
+
+		this.sessionMemoryToolCallsSinceUpdate++
+		if (this.sessionMemoryToolCallsSinceUpdate < toolCallsBetweenUpdates) {
+			return
+		}
+
+		const currentTokens = estimateMessageTokens(this.apiConversationHistory)
+
+		if (!this.sessionMemoryInitialized && currentTokens < minTokensToInit) {
+			return
+		}
+
+		if (this.sessionMemoryInitialized) {
+			const tokensSince = currentTokens - this.sessionMemoryTokensAtLastExtraction
+			if (tokensSince < minTokensBetweenUpdate) {
+				return
+			}
+		}
+
+		this.sessionMemoryExtracting = true
+		this.sessionMemoryToolCallsSinceUpdate = 0
+		const snapshotLastMessageId = this.apiConversationHistory.at(-1)?.id
+
+		try {
+			const updated = await extractSessionMemory(
+				this.apiConversationHistory,
+				this.sessionMemoryContent ?? null,
+				this.api,
+			)
+			this.sessionMemoryContent = updated
+			this.sessionMemoryInitialized = true
+			this.sessionMemoryTokensAtLastExtraction = currentTokens
+			if (snapshotLastMessageId) {
+				this.sessionMemoryLastMessageId = snapshotLastMessageId
+			}
+		} catch (err) {
+			console.error("[Session Memory] Extraction failed:", err)
+		} finally {
+			this.sessionMemoryExtracting = false
 		}
 	}
 
@@ -4111,6 +4202,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					? await this.getFilesReadByRooSafely("attemptApiRequest")
 					: undefined
 
+			const cfg = vscode.workspace.getConfiguration(Package.name)
+			const promptTooLongRetryEnabled = cfg.get<boolean>("promptTooLongRetryEnabled", true)
+			const promptTooLongMaxRetries = cfg.get<number>("promptTooLongMaxRetries", 2)
+			const compactHooksEnabled = cfg.get<boolean>("compactHooksEnabled", true)
+			const compactHooksPath = cfg.get<string>("compactHooksPath") || undefined
+			const hookSystem: HookSystem | undefined = compactHooksEnabled
+				? createHookSystem(this.cwd, true, compactHooksPath)
+				: undefined
+
 			try {
 				const truncateResult = await manageContext({
 					messages: this.apiConversationHistory,
@@ -4130,6 +4230,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					filesReadByRoo: contextMgmtFilesReadByRoo,
 					cwd: this.cwd,
 					rooIgnoreController: this.rooIgnoreController,
+					sessionMemory: this.sessionMemoryContent,
+					sessionMemoryCompactEnabled: cfg.get<boolean>("sessionMemoryCompactEnabled", true),
+					lastSummarizedMessageId: this.sessionMemoryLastMessageId,
+					hookSystem,
+					promptTooLongRetryEnabled,
+					promptTooLongMaxRetries,
 				})
 				if (truncateResult.messages !== this.apiConversationHistory) {
 					await this.overwriteApiConversationHistory(truncateResult.messages)

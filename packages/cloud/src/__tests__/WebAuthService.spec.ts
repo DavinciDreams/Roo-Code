@@ -90,7 +90,7 @@ describe("WebAuthService", () => {
 
 		it("should always end in logged-out state regardless of stored credentials", async () => {
 			// Even if credentials exist, the no-op service goes to logged-out
-			;(mockContext as any).secrets.get.mockResolvedValue(
+			vi.mocked(mockContext.secrets.get).mockResolvedValue(
 				JSON.stringify({ clientToken: "test-token", sessionId: "test-session" }),
 			)
 
@@ -226,6 +226,7 @@ describe("WebAuthService", () => {
 	describe("dispose", () => {
 		it("should remove all listeners", () => {
 			const listener = vi.fn()
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			authService.on("auth-state-changed" as any, listener)
 			authService.dispose()
 			// After dispose, emitting should not reach the listener

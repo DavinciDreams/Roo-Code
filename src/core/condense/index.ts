@@ -11,8 +11,15 @@ import { findLast } from "../../shared/array"
 import { supportPrompt } from "../../shared/support-prompt"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { generateFoldedFileContext } from "./foldedFileContext"
+import type { HookSystem } from "../hooks"
 
 export type { FoldedFileContextResult, FoldedFileContextOptions } from "./foldedFileContext"
+export * from "./microCompact"
+export * from "./sessionMemory"
+export * from "./sessionMemoryCompact"
+
+// Export helper functions for testing
+export { groupMessagesByApiRound, estimateMessageTokens }
 
 /**
  * Converts a tool_use block to a text representation.
@@ -110,6 +117,182 @@ export function transformMessagesForCondensing<
 
 export const MIN_CONDENSE_THRESHOLD = 5 // Minimum percentage of context window to trigger condensing
 export const MAX_CONDENSE_THRESHOLD = 100 // Maximum percentage of context window to trigger condensing
+
+// Prompt-too-long retry configuration
+const MAX_PTL_RETRIES = 2 // Maximum number of retry attempts when condensation hits prompt-too-long error
+const PTL_RETRY_MARKER = "[earlier conversation truncated for condensation retry]"
+
+/**
+ * Checks if an error message indicates a "prompt too long" error from the API.
+ * This handles multiple providers that may return different error messages.
+ *
+ * @param errorMessage - The error message to check
+ * @returns True if this is a prompt-too-long error, false otherwise
+ */
+export function isPromptTooLongError(errorMessage: string): boolean {
+	const lowerMessage = errorMessage.toLowerCase()
+	// Common patterns across providers:
+	// - Anthropic: "prompt is too long"
+	// - OpenAI: "maximum context length exceeded"
+	// - Generic: "context length exceeded", "too many tokens"
+	return (
+		lowerMessage.includes("prompt is too long") ||
+		lowerMessage.includes("maximum context length exceeded") ||
+		lowerMessage.includes("context length exceeded") ||
+		lowerMessage.includes("too many tokens") ||
+		lowerMessage.includes("tokens exceed")
+	)
+}
+
+/**
+ * Parses the token gap from a prompt-too-long error message.
+ * Returns the number of tokens over the limit, or undefined if unparseable.
+ *
+ * @param errorMessage - The error message from the API
+ * @returns The number of tokens over the limit, or undefined
+ */
+export function parsePromptTooLongTokenGap(errorMessage: string): number | undefined {
+	// Try to match patterns like "137500 tokens > 135000 maximum" or "exceeded by 2500 tokens"
+	const match =
+		errorMessage.match(/(\d+)\s*tokens?\s*>\s*(\d+)/i) || errorMessage.match(/exceeded\s+by\s+(\d+)\s*tokens?/i)
+	if (match) {
+		const actual = parseInt(match[1], 10)
+		const limit = match[2] ? parseInt(match[2], 10) : actual
+		return Math.max(0, actual - limit)
+	}
+	return undefined
+}
+
+/**
+ * Groups messages by API round (user message + assistant response).
+ * This is used for intelligent truncation that removes complete conversation turns.
+ *
+ * @param messages - The messages to group
+ * @returns Array of message groups, where each group represents one API round
+ */
+function groupMessagesByApiRound(messages: ApiMessage[]): ApiMessage[][] {
+	const groups: ApiMessage[][] = []
+	let currentGroup: ApiMessage[] = []
+
+	for (const msg of messages) {
+		if (msg.role === "user") {
+			// Start a new group when we see a user message
+			if (currentGroup.length > 0) {
+				groups.push(currentGroup)
+			}
+			currentGroup = [msg]
+		} else {
+			// Add assistant messages to the current group
+			currentGroup.push(msg)
+		}
+	}
+
+	// Don't forget the last group
+	if (currentGroup.length > 0) {
+		groups.push(currentGroup)
+	}
+
+	return groups
+}
+
+/**
+ * Estimates the token count for a message.
+ * This is a rough estimation used for determining how many groups to drop.
+ *
+ * @param msg - The message to estimate tokens for
+ * @returns Estimated token count
+ */
+function estimateMessageTokens(msg: ApiMessage): number {
+	const content = msg.content
+	if (typeof content === "string") {
+		// Rough estimate: ~4 characters per token
+		return Math.ceil(content.length / 4)
+	} else if (Array.isArray(content)) {
+		let total = 0
+		for (const block of content) {
+			if (block.type === "text") {
+				total += Math.ceil(block.text.length / 4)
+			} else if (block.type === "image") {
+				// Images are expensive, estimate conservatively
+				total += 1000
+			} else {
+				// Other blocks (tool_use, tool_result, etc.)
+				total += 100
+			}
+		}
+		return total
+	}
+	return 0
+}
+
+/**
+ * Truncates messages from the head (beginning) to reduce token count when
+ * condensation hits a prompt-too-long error. This is a fallback mechanism
+ * when the condensed context itself is still too large.
+ *
+ * @param messages - The messages to truncate
+ * @param errorMessage - The error message that triggered the retry
+ * @returns Truncated messages, or null if nothing can be dropped
+ */
+export function truncateHeadForPromptTooLongRetry(messages: ApiMessage[], errorMessage: string): ApiMessage[] | null {
+	// Strip our own synthetic marker from a previous retry before grouping
+	const input =
+		messages[0]?.role === "user" &&
+		messages[0]?.isMeta &&
+		typeof messages[0].content === "string" &&
+		messages[0].content === PTL_RETRY_MARKER
+			? messages.slice(1)
+			: messages
+
+	const groups = groupMessagesByApiRound(input)
+	if (groups.length < 2) {
+		return null // Not enough groups to drop
+	}
+
+	const tokenGap = parsePromptTooLongTokenGap(errorMessage)
+	let dropCount: number
+
+	if (tokenGap !== undefined && tokenGap > 0) {
+		// Calculate how many groups to drop to cover the token gap
+		let acc = 0
+		dropCount = 0
+		for (const group of groups) {
+			const groupTokens = group.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+			acc += groupTokens
+			dropCount++
+			if (acc >= tokenGap) {
+				break
+			}
+		}
+	} else {
+		// Fallback: drop 20% of groups when we can't parse the gap
+		dropCount = Math.max(1, Math.floor(groups.length * 0.2))
+	}
+
+	// Keep at least one group so there's something to summarize
+	dropCount = Math.min(dropCount, groups.length - 1)
+	if (dropCount < 1) {
+		return null
+	}
+
+	const sliced = groups.slice(dropCount).flat()
+
+	// If the first message is an assistant message, prepend a synthetic user marker
+	// to ensure the conversation starts with a user message (API requirement)
+	if (sliced[0]?.role === "assistant") {
+		return [
+			{
+				role: "user",
+				content: PTL_RETRY_MARKER,
+				ts: Date.now(),
+				isMeta: true,
+			},
+			...sliced,
+		]
+	}
+
+	return sliced
+}
 
 const SUMMARY_PROMPT = `You are a helpful AI assistant tasked with summarizing conversations.
 
@@ -233,6 +416,12 @@ export type SummarizeConversationOptions = {
 	filesReadByRoo?: string[]
 	cwd?: string
 	rooIgnoreController?: RooIgnoreController
+	/** Optional hook system for executing pre/post compact hooks */
+	hookSystem?: HookSystem
+	/** Whether prompt-too-long retry is enabled */
+	promptTooLongRetryEnabled?: boolean
+	/** Maximum number of retry attempts when condensation hits prompt-too-long error */
+	promptTooLongMaxRetries?: number
 }
 
 /**
@@ -266,6 +455,9 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		filesReadByRoo,
 		cwd,
 		rooIgnoreController,
+		hookSystem,
+		promptTooLongRetryEnabled = true,
+		promptTooLongMaxRetries = MAX_PTL_RETRIES,
 	} = options
 	TelemetryService.instance.captureContextCondensed(
 		taskId,
@@ -276,7 +468,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 	const response: SummarizeResponse = { messages, cost: 0, summary: "" }
 
 	// Get messages to summarize (all messages since the last summary, if any)
-	const messagesToSummarize = getMessagesSinceLastSummary(messages)
+	let messagesToSummarize = getMessagesSinceLastSummary(messages)
 
 	if (messagesToSummarize.length <= 1) {
 		const error =
@@ -294,31 +486,34 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		return { ...response, error }
 	}
 
+	// Execute pre-compact hooks if hook system is provided
+	let effectiveCustomCondensingPrompt = customCondensingPrompt
+	if (hookSystem) {
+		const trigger: "manual" | "auto" = isAutomaticTrigger ? "auto" : "manual"
+		const preCompactResult = await hookSystem.executePreCompactHooks(trigger, customCondensingPrompt || null, {
+			cwd,
+			taskId,
+		})
+
+		// Use custom instructions from hooks if provided
+		if (preCompactResult.newCustomInstructions) {
+			effectiveCustomCondensingPrompt = preCompactResult.newCustomInstructions
+		}
+
+		// Log hook results
+		if (preCompactResult.userMessage) {
+			console.log(`[PreCompact Hooks] ${preCompactResult.userMessage}`)
+		}
+	}
+
 	// Use custom prompt if provided and non-empty, otherwise use the default CONDENSE prompt
 	// This respects user's custom condensing prompt setting
-	const condenseInstructions = customCondensingPrompt?.trim() || supportPrompt.default.CONDENSE
+	const condenseInstructions = effectiveCustomCondensingPrompt?.trim() || supportPrompt.default.CONDENSE
 
 	const finalRequestMessage: Anthropic.MessageParam = {
 		role: "user",
 		content: condenseInstructions,
 	}
-
-	// Inject synthetic tool_results for orphan tool_calls to prevent API rejections
-	// (e.g., when user triggers condense after receiving attempt_completion but before responding)
-	const messagesWithToolResults = injectSyntheticToolResults(messagesToSummarize)
-
-	// Transform tool_use and tool_result blocks to text representations.
-	// This is necessary because some providers (like Bedrock via LiteLLM) require the `tools` parameter
-	// when tool blocks are present. By converting them to text, we can send the conversation for
-	// summarization without needing to pass the tools parameter.
-	const messagesWithTextToolBlocks = transformMessagesForCondensing(
-		maybeRemoveImageBlocks([...messagesWithToolResults, finalRequestMessage], apiHandler),
-	)
-
-	const requestMessages = messagesWithTextToolBlocks.map(({ role, content }) => ({ role, content }))
-
-	// Note: this doesn't need to be a stream, consider using something like apiHandler.completePrompt
-	const promptToUse = SUMMARY_PROMPT
 
 	// Validate that the API handler supports message creation
 	if (!apiHandler || typeof apiHandler.createMessage !== "function") {
@@ -327,61 +522,117 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		return { ...response, error }
 	}
 
+	// Note: this doesn't need to be a stream, consider using something like apiHandler.completePrompt
+	const promptToUse = SUMMARY_PROMPT
+
 	let summary = ""
 	let cost = 0
 	let outputTokens = 0
+	let ptlAttempts = 0 // Prompt-too-long retry attempts
 
-	try {
-		const stream = apiHandler.createMessage(promptToUse, requestMessages, metadata)
+	// Retry loop for prompt-too-long errors
+	while (true) {
+		// Inject synthetic tool_results for orphan tool_calls to prevent API rejections
+		// (e.g., when user triggers condense after receiving attempt_completion but before responding)
+		const messagesWithToolResults = injectSyntheticToolResults(messagesToSummarize)
 
-		for await (const chunk of stream) {
-			if (chunk.type === "text") {
-				summary += chunk.text
-			} else if (chunk.type === "usage") {
-				// Record final usage chunk only
-				cost = chunk.totalCost ?? 0
-				outputTokens = chunk.outputTokens ?? 0
-			}
-		}
-	} catch (error) {
-		console.error("Error during condensing API call:", error)
-		const errorMessage = error instanceof Error ? error.message : String(error)
+		// Transform tool_use and tool_result blocks to text representations.
+		// This is necessary because some providers (like Bedrock via LiteLLM) require the `tools` parameter
+		// when tool blocks are present. By converting them to text, we can send the conversation for
+		// summarization without needing to pass the tools parameter.
+		const messagesWithTextToolBlocks = transformMessagesForCondensing(
+			maybeRemoveImageBlocks([...messagesWithToolResults, finalRequestMessage], apiHandler),
+		)
 
-		// Capture detailed error information for debugging
-		let errorDetails = ""
-		if (error instanceof Error) {
-			errorDetails = `Error: ${error.message}`
-			// Capture any additional API error properties
-			const anyError = error as unknown as Record<string, unknown>
-			if (anyError.status) {
-				errorDetails += `\n\nHTTP Status: ${anyError.status}`
-			}
-			if (anyError.code) {
-				errorDetails += `\nError Code: ${anyError.code}`
-			}
-			if (anyError.response) {
-				try {
-					errorDetails += `\n\nAPI Response:\n${JSON.stringify(anyError.response, null, 2)}`
-				} catch {
-					errorDetails += `\n\nAPI Response: [Unable to serialize]`
+		const requestMessages = messagesWithTextToolBlocks.map(({ role, content }) => ({ role, content }))
+
+		try {
+			const stream = apiHandler.createMessage(promptToUse, requestMessages, metadata)
+
+			for await (const chunk of stream) {
+				if (chunk.type === "text") {
+					summary += chunk.text
+				} else if (chunk.type === "usage") {
+					// Record final usage chunk only
+					cost = chunk.totalCost ?? 0
+					outputTokens = chunk.outputTokens ?? 0
 				}
 			}
-			if (anyError.body) {
-				try {
-					errorDetails += `\n\nResponse Body:\n${JSON.stringify(anyError.body, null, 2)}`
-				} catch {
-					errorDetails += `\n\nResponse Body: [Unable to serialize]`
+			// Success! Break out of the retry loop
+			break
+		} catch (error) {
+			console.error("Error during condensing API call:", error)
+			const errorMessage = error instanceof Error ? error.message : String(error)
+
+			// Check if this is a prompt-too-long error and retry is enabled
+			if (promptTooLongRetryEnabled && isPromptTooLongError(errorMessage)) {
+				ptlAttempts++
+				console.log(
+					`[Condense] Prompt too long error detected. Retry attempt ${ptlAttempts}/${promptTooLongMaxRetries}`,
+				)
+
+				if (ptlAttempts <= promptTooLongMaxRetries) {
+					// Try to truncate messages and retry
+					const truncated = truncateHeadForPromptTooLongRetry(messagesToSummarize, errorMessage)
+					if (truncated) {
+						const droppedMessages = messagesToSummarize.length - truncated.length
+						console.log(
+							`[Condense] Truncated ${droppedMessages} messages for retry. ${truncated.length} messages remaining.`,
+						)
+						messagesToSummarize = truncated
+						continue // Retry with truncated messages
+					} else {
+						console.log(
+							`[Condense] Cannot truncate further. Not enough messages to drop after ${ptlAttempts} attempts.`,
+						)
+					}
+				} else {
+					console.log(`[Condense] Max retry attempts (${promptTooLongMaxRetries}) exceeded. Giving up.`)
 				}
 			}
-		} else {
-			errorDetails = String(error)
-		}
 
-		return {
-			...response,
-			cost,
-			error: t("common:errors.condense_api_failed", { message: errorMessage }),
-			errorDetails,
+			// If we get here, either:
+			// 1. This is not a prompt-too-long error
+			// 2. Retry is disabled
+			// 3. We've exhausted all retry attempts
+			// 4. We cannot truncate further
+
+			// Capture detailed error information for debugging
+			let errorDetails = ""
+			if (error instanceof Error) {
+				errorDetails = `Error: ${error.message}`
+				// Capture any additional API error properties
+				const anyError = error as unknown as Record<string, unknown>
+				if (anyError.status) {
+					errorDetails += `\n\nHTTP Status: ${anyError.status}`
+				}
+				if (anyError.code) {
+					errorDetails += `\nError Code: ${anyError.code}`
+				}
+				if (anyError.response) {
+					try {
+						errorDetails += `\n\nAPI Response:\n${JSON.stringify(anyError.response, null, 2)}`
+					} catch {
+						errorDetails += `\n\nAPI Response: [Unable to serialize]`
+					}
+				}
+				if (anyError.body) {
+					try {
+						errorDetails += `\n\nResponse Body:\n${JSON.stringify(anyError.body, null, 2)}`
+					} catch {
+						errorDetails += `\n\nResponse Body: [Unable to serialize]`
+					}
+				}
+			} else {
+				errorDetails = String(error)
+			}
+
+			return {
+				...response,
+				cost,
+				error: t("common:errors.condense_api_failed", { message: errorMessage }),
+				errorDetails,
+			}
 		}
 	}
 
@@ -506,6 +757,30 @@ ${commandBlocks}
 	}
 
 	const newContextTokens = messageTokens + toolTokens
+
+	// Execute post-compact hooks if hook system is provided
+	if (hookSystem) {
+		const trigger: "manual" | "auto" = isAutomaticTrigger ? "auto" : "manual"
+		// Estimate previous token count (before condensation)
+		const prevContextBlocks = messages.flatMap((message) =>
+			typeof message.content === "string" ? [{ text: message.content, type: "text" as const }] : message.content,
+		)
+		const prevContextTokens = await apiHandler.countTokens(prevContextBlocks)
+
+		const postCompactResult = await hookSystem.executePostCompactHooks(
+			trigger,
+			summary,
+			prevContextTokens,
+			newContextTokens,
+			{ cwd, taskId },
+		)
+
+		// Log hook results
+		if (postCompactResult.userMessage) {
+			console.log(`[PostCompact Hooks] ${postCompactResult.userMessage}`)
+		}
+	}
+
 	return { messages: newMessages, summary, cost, newContextTokens, condenseId }
 }
 

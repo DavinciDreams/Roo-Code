@@ -176,17 +176,6 @@ export class RetryQueue extends EventEmitter<RetryQueueEvents> {
 	private async retryRequest(request: QueuedRequest): Promise<Response> {
 		this.log(`[RetryQueue] Retrying request: ${request.url}`)
 
-		let headers = { ...request.options.headers }
-		if (this.authHeaderProvider) {
-			const freshAuthHeaders = this.authHeaderProvider()
-			if (freshAuthHeaders) {
-				headers = {
-					...headers,
-					...freshAuthHeaders,
-				}
-			}
-		}
-
 		// Cloud features disabled â€” skip actual HTTP fetch, return fake success
 		this.log(`[RetryQueue] Cloud features disabled - skipping request to ${request.url}`)
 

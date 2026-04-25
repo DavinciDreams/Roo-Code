@@ -165,7 +165,7 @@ export class CloudService extends EventEmitter<CloudServiceEvents> implements Di
 				},
 			)
 
-			this._telemetryClient = new TelemetryClient(this._authService, this._settingsService, this._retryQueue)
+			this._telemetryClient = new TelemetryClient(this._authService, this._settingsService)
 
 			this._shareService = new CloudShareService(this._cloudAPI, this._settingsService, this.log)
 

@@ -15,13 +15,14 @@ interface NewTaskParams {
 	mode: string
 	message: string
 	todos?: string
+	worktree?: string
 }
 
 export class NewTaskTool extends BaseTool<"new_task"> {
 	readonly name = "new_task" as const
 
 	async execute(params: NewTaskParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { mode, message, todos } = params
+		const { mode, message, todos, worktree } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
@@ -115,6 +116,7 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 				message: unescapedMessage,
 				initialTodos: todoItems,
 				mode,
+				worktree: worktree || undefined,
 			})
 
 			// Reflect delegation in tool result (no pause/unpause, no wait)

@@ -196,7 +196,7 @@ describe("RetryQueue", () => {
 		it("should clear queue when user changes", async () => {
 			// Since enqueue is a no-op, we can't add items
 			// But clear mechanism should still work
-			let stats = retryQueue.getStats()
+			const stats = retryQueue.getStats()
 			expect(stats.totalQueued).toBe(0)
 
 			retryQueue.setCurrentUserId("user_123")

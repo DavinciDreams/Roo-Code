@@ -1377,6 +1377,11 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
+		case "openVSCodeSettings": {
+			const query = message.text || ""
+			await vscode.commands.executeCommand("workbench.action.openSettings", query)
+			break
+		}
 		case "openMcpSettings": {
 			const mcpSettingsFilePath = await provider.getMcpHub()?.getMcpSettingsFilePath()
 

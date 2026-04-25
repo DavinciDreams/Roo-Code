@@ -86,7 +86,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		setMode,
 		alwaysAllowModeSwitch,
 		customModes,
-		telemetrySetting,
+		telemetrySetting: _telemetrySetting,
 		soundEnabled,
 		soundVolume,
 		cloudIsAuthenticated,

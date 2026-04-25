@@ -26,6 +26,27 @@ export const historyItemSchema = z.object({
 	awaitingChildId: z.string().optional(), // Child currently awaited (set when delegated)
 	completedByChildId: z.string().optional(), // Child that completed and resumed this parent
 	completionResultSummary: z.string().optional(), // Summary from completed child
+	completionPayload: z.record(z.unknown()).optional(), // Structured JSON result from child
+	worktreePath: z.string().optional(), // Worktree path if this task ran in an isolated worktree
+	parallelQueue: z
+		.array(
+			z.object({
+				mode: z.string(),
+				message: z.string(),
+				worktree: z.string().optional(),
+				todos: z.string().optional(),
+			}),
+		)
+		.optional(), // Remaining tasks for spawn_parallel_tasks fan-out
+	parallelResults: z
+		.array(
+			z.object({
+				taskId: z.string(),
+				summary: z.string(),
+				payload: z.record(z.unknown()).optional(),
+			}),
+		)
+		.optional(), // Accumulated results from completed parallel children
 })
 
 export type HistoryItem = z.infer<typeof historyItemSchema>

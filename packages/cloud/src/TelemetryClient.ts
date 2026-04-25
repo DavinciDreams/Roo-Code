@@ -9,6 +9,7 @@ import {
 } from "@roo-code/types"
 
 abstract class BaseTelemetryClient implements TelemetryClient {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	protected providerRef: WeakRef<any> | null = null
 	protected telemetryEnabled: boolean = false
 
@@ -66,6 +67,7 @@ abstract class BaseTelemetryClient implements TelemetryClient {
 
 	public async captureException(_error: Error, _additionalProperties?: Record<string, unknown>): Promise<void> {}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	public setProvider(provider: any): void {
 		this.providerRef = new WeakRef(provider)
 	}

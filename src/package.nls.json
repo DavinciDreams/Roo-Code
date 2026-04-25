@@ -45,5 +45,18 @@
 	"settings.debug.description": "Enable debug mode to show additional buttons for viewing API conversation history and UI messages as prettified JSON in temporary files.",
 	"settings.debugProxy.enabled.description": "**Enable Debug Proxy** — Route all outbound network requests through a proxy for MITM debugging. Only active when running in debug mode (F5).",
 	"settings.debugProxy.serverUrl.description": "Proxy URL (e.g., `http://127.0.0.1:8888`). Only used when **Debug Proxy** is enabled.",
-	"settings.debugProxy.tlsInsecure.description": "Accept self-signed certificates from the proxy. **Required for MITM inspection.** ⚠️ Insecure — only use for local debugging."
+	"settings.debugProxy.tlsInsecure.description": "Accept self-signed certificates from the proxy. **Required for MITM inspection.** ⚠️ Insecure — only use for local debugging.",
+	"settings.microCompactEnabled.description": "Enable microcompact to automatically clear old tool result content (file reads, shell output, search results, etc.) to save tokens. Runs before full condensation.",
+	"settings.microCompactThreshold.description": "Number of messages back to start clearing tool results. When there are more than this many compactable tool results, older ones will be cleared. Default: 5.",
+	"settings.microCompactKeepRecent.description": "Number of most-recent compactable tool results to keep. The most recent N tool results are always preserved. Default: 3.",
+	"settings.sessionMemoryCompactEnabled.description": "Enable session memory compaction to use pre-extracted session memory as a condensation summary instead of calling the LLM again. This can significantly reduce API costs and improve performance for long conversations.",
+	"settings.sessionMemoryCompactMinTokens.description": "Minimum tokens to preserve after session memory compaction. The compaction will keep at least this many tokens of recent messages. Default: 10000.",
+	"settings.sessionMemoryCompactMaxTokens.description": "Maximum tokens to preserve after session memory compaction. This is a hard cap to prevent keeping too many messages. Default: 50000.",
+	"settings.sessionMemoryMinTokensToInit.description": "Minimum context window tokens before initializing session memory extraction. Session memory will only start being extracted after the conversation reaches this size. Default: 10000.",
+	"settings.sessionMemoryMinTokensBetweenUpdate.description": "Minimum context window growth (in tokens) between session memory updates. Session memory will only be updated after the conversation grows by this many tokens. Default: 5000.",
+	"settings.sessionMemoryToolCallsBetweenUpdates.description": "Number of tool calls between session memory updates. Session memory will be updated after this many tool calls occur. Default: 3.",
+	"settings.compactHooksEnabled.description": "Enable pre/post compact hooks to execute custom commands before and after context condensation. Hooks are defined in a .roo-hooks.json file in the workspace root.",
+	"settings.compactHooksPath.description": "Custom path to the hooks configuration file. Leave empty to use the default .roo-hooks.json file in the workspace root. Supports relative paths from the workspace root.",
+	"settings.promptTooLongRetryEnabled.description": "Enable automatic retry with head truncation when condensation hits a prompt-too-long error. This helps recover from situations where the condensed context is still too large for the API.",
+	"settings.promptTooLongMaxRetries.description": "Maximum number of retry attempts when condensation hits a prompt-too-long error. Each retry truncates more messages from the beginning of the conversation. Range: 0-5, default: 2."
 }
