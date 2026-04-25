@@ -57,6 +57,8 @@ export enum RooCodeEventName {
 	WorkerRegistered = "workerRegistered",
 	WorkerIdle = "workerIdle",
 	WorkerShutdown = "workerShutdown",
+	PermissionRequested = "permissionRequested",
+	PermissionResolved = "permissionResolved",
 
 	// Evals
 	EvalPass = "evalPass",
@@ -124,6 +126,8 @@ export const rooCodeEventsSchema = z.object({
 	[RooCodeEventName.WorkerRegistered]: z.tuple([z.string(), z.string(), z.string(), z.string()]), // [sessionId, taskId, agentName, agentColor]
 	[RooCodeEventName.WorkerIdle]: z.tuple([z.string(), z.string()]), // [sessionId, taskId]
 	[RooCodeEventName.WorkerShutdown]: z.tuple([z.string(), z.string()]), // [sessionId, taskId]
+	[RooCodeEventName.PermissionRequested]: z.tuple([z.string(), z.string(), z.string()]), // [workerTaskId, toolName, requestId]
+	[RooCodeEventName.PermissionResolved]: z.tuple([z.string(), z.string(), z.boolean()]), // [workerTaskId, requestId, allowed]
 
 	[RooCodeEventName.ModeChanged]: z.tuple([z.string()]),
 	[RooCodeEventName.ProviderProfileChanged]: z.tuple([z.object({ name: z.string(), provider: z.string() })]),
@@ -311,6 +315,16 @@ export const taskEventSchema = z.discriminatedUnion("eventName", [
 	z.object({
 		eventName: z.literal(RooCodeEventName.WorkerShutdown),
 		payload: rooCodeEventsSchema.shape[RooCodeEventName.WorkerShutdown],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.PermissionRequested),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.PermissionRequested],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.PermissionResolved),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.PermissionResolved],
 		taskId: z.number().optional(),
 	}),
 

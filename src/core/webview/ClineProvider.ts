@@ -80,6 +80,7 @@ import { SkillsManager } from "../../services/skills/SkillsManager"
 import { TeamsManager } from "../../services/teams/TeamsManager"
 import { SwarmRegistry } from "../swarm/SwarmRegistry"
 import { MailboxManager } from "../swarm/MailboxManager"
+import { registerPermissionHandler, showWorkerPermissionDialog } from "../swarm/LeaderPermissionBridge"
 
 import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
@@ -158,6 +159,7 @@ export class ClineProvider
 	protected teamsManager?: TeamsManager
 	protected swarmRegistry: SwarmRegistry = new SwarmRegistry()
 	protected mailboxManager: MailboxManager = new MailboxManager()
+	private permissionBridgeCleanup?: () => void
 	private marketplaceManager: MarketplaceManager
 	private mdmService?: MdmService
 	private taskCreationCallback: (task: Task) => void
@@ -252,6 +254,9 @@ export class ClineProvider
 		this.teamsManager.initialize().catch((error) => {
 			this.log(`Failed to initialize Teams Manager: ${error}`)
 		})
+
+		// Register as the in-process permission approval surface for concurrent workers.
+		this.permissionBridgeCleanup = registerPermissionHandler(showWorkerPermissionDialog)
 
 		this.marketplaceManager = new MarketplaceManager(this.context, this.customModesManager)
 
@@ -747,6 +752,8 @@ export class ClineProvider
 		this.teamsManager = undefined
 		this.swarmRegistry.dispose()
 		this.mailboxManager.dispose()
+		this.permissionBridgeCleanup?.()
+		this.permissionBridgeCleanup = undefined
 		this.marketplaceManager?.cleanup()
 		this.customModesManager?.dispose()
 		this.taskHistoryStore.dispose()

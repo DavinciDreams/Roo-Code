@@ -2,7 +2,8 @@ import { serializeError } from "serialize-error"
 import { Anthropic } from "@anthropic-ai/sdk"
 
 import type { ToolName, ClineAsk, ToolProgressStatus } from "@roo-code/types"
-import { ConsecutiveMistakeError, TelemetryEventName } from "@roo-code/types"
+import { ConsecutiveMistakeError, TelemetryEventName, RooCodeEventName } from "@roo-code/types"
+import { submitWorkerPermissionRequest } from "../swarm/LeaderPermissionBridge"
 import { TelemetryService } from "@roo-code/telemetry"
 import { customToolRegistry } from "@roo-code/core"
 
@@ -504,6 +505,49 @@ export async function presentAssistantMessage(cline: Task) {
 				progressStatus?: ToolProgressStatus,
 				isProtected?: boolean,
 			) => {
+				// Concurrent workers route tool-approval through the leader permission bridge
+				// instead of surfacing a UI prompt on the worker task itself.
+				if (type === "tool" && cline.parentTaskId) {
+					type PermissionProvider = {
+						getTaskById?: (id: string) => unknown
+						swarmRegistry?: {
+							getSessionForTask(
+								taskId: string,
+							):
+								| {
+										sessionId: string
+										teammates: Record<
+											string,
+											{ agentName: string; color: import("@roo-code/types").AgentColorName }
+										>
+								  }
+								| undefined
+						}
+					}
+					const provider = cline.providerRef.deref() as PermissionProvider | undefined
+					const parentIsAlive = provider?.getTaskById?.(cline.parentTaskId) !== undefined
+					if (parentIsAlive) {
+						const session = provider?.swarmRegistry?.getSessionForTask(cline.taskId)
+						const identity = session?.teammates[cline.taskId]
+						const agentName = identity?.agentName ?? "Worker"
+						const color = identity?.color ?? ("blue" as import("@roo-code/types").AgentColorName)
+						const toolName = String(block.name ?? "tool")
+						const allowed = await submitWorkerPermissionRequest(
+							cline.taskId,
+							agentName,
+							color,
+							toolName,
+							partialMessage ?? "",
+						)
+						if (!allowed) {
+							pushToolResult(formatResponse.toolDenied())
+							cline.didRejectTool = true
+							return false
+						}
+						return true
+					}
+				}
+
 				const { response, text, images } = await cline.ask(
 					type,
 					partialMessage,
