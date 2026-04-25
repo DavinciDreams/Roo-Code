@@ -1,25 +1,48 @@
+import os from "os"
+import path from "path"
+
 import type { TeammateMessage } from "@roo-code/types"
 
+import type { IMailboxService } from "./IMailboxService"
 import { InMemoryMailbox } from "./InMemoryMailbox"
+import { FileMailbox } from "./FileMailbox"
 
 /**
- * Manages one InMemoryMailbox per swarm session.
+ * Manages one mailbox per swarm session.
  * A session's mailbox is only created when the session opts in to persistent
  * workers (`persistent: true` on spawnConcurrentChildren).
+ *
+ * Two backends are available:
+ * - InMemoryMailbox  — in-process workers (zero latency, default)
+ * - FileMailbox      — cross-process workers (polls JSON file with lockfile)
  *
  * All public methods are no-ops when the session has no mailbox, so callers
  * don't need to guard against missing sessions.
  */
 export class MailboxManager {
-	private mailboxes = new Map<string, InMemoryMailbox>()
+	private mailboxes = new Map<string, IMailboxService>()
 
+	/** Create an in-process (memory) mailbox for the session. */
 	createMailbox(sessionId: string): void {
 		if (!this.mailboxes.has(sessionId)) {
 			this.mailboxes.set(sessionId, new InMemoryMailbox())
 		}
 	}
 
-	getMailbox(sessionId: string): InMemoryMailbox | undefined {
+	/**
+	 * Create a file-backed mailbox for the session.
+	 * Used by cross-process workers (P5/P6).
+	 * Files land at `<baseDir>/<safe-agentId>.json`.
+	 * Defaults to `~/.roo/swarm/<sessionId>/` when baseDir is omitted.
+	 */
+	createFileMailbox(sessionId: string, baseDir?: string): void {
+		if (!this.mailboxes.has(sessionId)) {
+			const dir = baseDir ?? path.join(os.homedir(), ".roo", "swarm", sessionId)
+			this.mailboxes.set(sessionId, new FileMailbox(dir))
+		}
+	}
+
+	getMailbox(sessionId: string): IMailboxService | undefined {
 		return this.mailboxes.get(sessionId)
 	}
 

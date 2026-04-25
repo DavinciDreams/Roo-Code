@@ -1,6 +1,6 @@
 # PRD: Swarm / True Multi-Agent Execution in Moo Code
 
-**Status:** In progress — Phase 1 shipped; Teams system shipped  
+**Status:** In progress — P1, PT, P2, P3, P4, P5 shipped  
 **Author:** davincidreams  
 **Branch:** `feat/swarm-prd`  
 **Created:** 2026-04-25  
