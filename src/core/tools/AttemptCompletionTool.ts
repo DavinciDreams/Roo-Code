@@ -33,6 +33,15 @@ interface DelegationProvider {
 		completionPayload?: Record<string, unknown>
 		childFailed?: boolean
 	}): Promise<void>
+	/** Returns the live Task instance if it is still registered (concurrent mode check). */
+	getTaskById?(taskId: string): import("../task/Task").Task | undefined
+	/** Resolves a concurrent child's completion Promise in the parent's spawnConcurrentChildren call. */
+	resolveChildCompletion?(params: {
+		childTaskId: string
+		summary: string
+		payload?: Record<string, unknown>
+		failed?: boolean
+	}): Promise<void>
 }
 
 export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
@@ -182,6 +191,21 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			// Not JSON — leave completionPayload undefined
 		}
 
+		// Concurrent path: if the parent task is still alive in the provider's task map,
+		// this child was spawned concurrently — resolve its completion Promise rather than
+		// recreating the parent from history.
+		const parentIsAlive =
+			typeof provider.getTaskById === "function" && provider.getTaskById(task.parentTaskId!) !== undefined
+		if (parentIsAlive && typeof provider.resolveChildCompletion === "function") {
+			await provider.resolveChildCompletion({
+				childTaskId: task.taskId,
+				summary: result,
+				payload: completionPayload,
+			})
+			return "delegated"
+		}
+
+		// Sequential path: parent was disposed; recreate it from history.
 		await provider.reopenParentFromDelegation({
 			parentTaskId: task.parentTaskId!,
 			childTaskId: task.taskId,
