@@ -80,6 +80,10 @@ const { FileMailbox } = require(path.resolve(__dirname, "..", "core", "swarm", "
 async function executeTaskViaCli(taskMessage: string): Promise<string> {
 	const cliBin = process.env.ROO_CLI_BIN ?? "roo"
 
+	// Flags reference: apps/cli/src/index.ts
+	// --print   = non-interactive, print response and exit
+	// --oneshot = exit upon task completion
+	// Prompt is the positional [prompt] argument (not a --message flag).
 	const cliArgs = [
 		"--mode",
 		mode,
@@ -87,12 +91,11 @@ async function executeTaskViaCli(taskMessage: string): Promise<string> {
 		model,
 		"--workspace",
 		workspacePath,
-		"--message",
-		taskMessage,
+		"--print",
+		"--oneshot",
 		"--output-format",
 		"text",
-		"--yes", // non-interactive: auto-approve tool calls
-		"--exit-on-done", // exit after task completes
+		taskMessage, // positional [prompt] argument — must come after flags
 	]
 
 	return new Promise<string>((resolve, reject) => {

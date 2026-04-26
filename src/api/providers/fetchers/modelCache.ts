@@ -43,8 +43,14 @@ async function writeModels(router: RouterName, data: ModelRecord) {
 }
 
 async function readModels(router: RouterName): Promise<ModelRecord | undefined> {
+	// ContextProxy may not be available before extension activation or in the CLI.
+	const storagePath = ContextProxy.instance?.globalStorageUri?.fsPath
+	if (!storagePath) {
+		return undefined
+	}
+
 	const filename = `${router}_models.json`
-	const cacheDir = await getCacheDirectoryPath(ContextProxy.instance.globalStorageUri.fsPath)
+	const cacheDir = await getCacheDirectoryPath(storagePath)
 	const filePath = path.join(cacheDir, filename)
 	const exists = await fileExistsAtPath(filePath)
 	if (!exists) {

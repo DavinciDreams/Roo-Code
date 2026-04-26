@@ -1,4 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk"
+
+let envAuthTokenWarningEmitted = false
 import { Stream as AnthropicStream } from "@anthropic-ai/sdk/streaming"
 import { CacheControlEphemeral } from "@anthropic-ai/sdk/resources"
 import OpenAI from "openai"
@@ -41,7 +43,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// key is configured — lets Claude Code Max OAuth work without storing a key.
 		const envAuthToken = !this.options.apiKey ? process.env.ANTHROPIC_AUTH_TOKEN : undefined
 
-		if (envAuthToken) {
+		if (envAuthToken && !envAuthTokenWarningEmitted) {
+			envAuthTokenWarningEmitted = true
 			console.warn("[AnthropicHandler] Using ANTHROPIC_AUTH_TOKEN from environment. Ensure this is intentional.")
 		}
 

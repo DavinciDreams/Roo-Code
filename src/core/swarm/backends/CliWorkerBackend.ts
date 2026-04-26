@@ -44,8 +44,17 @@ export class CliWorkerBackend implements IWorkerBackend {
 			stdio: ["pipe", "pipe", "pipe"],
 		})
 
-		child.stdout?.on("data", (data: Buffer) => process.stdout.write(`[worker:${config.agentId}] ${data}`))
-		child.stderr?.on("data", (data: Buffer) => process.stderr.write(`[worker:${config.agentId}] ${data}`))
+		const prefix = `[worker:${config.agentId}] `
+		const prefixLines = (data: Buffer) =>
+			data
+				.toString("utf8")
+				.split("\n")
+				.filter((l) => l.length > 0)
+				.map((l) => prefix + l)
+				.join("\n") + "\n"
+
+		child.stdout?.on("data", (data: Buffer) => process.stdout.write(prefixLines(data)))
+		child.stderr?.on("data", (data: Buffer) => process.stderr.write(prefixLines(data)))
 
 		this.processes.set(config.agentId, child)
 

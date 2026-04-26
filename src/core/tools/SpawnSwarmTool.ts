@@ -134,6 +134,11 @@ export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 	 * Reads idle_notifications from the leader mailbox and dispatches the next
 	 * queued task (or a shutdown_request when the queue is empty).
 	 * Runs concurrently with `spawnConcurrentChildren` until all workers shut down.
+	 *
+	 * `pendingWorkers` is the authoritative counter: it starts at workerCount and
+	 * decrements each time we send a shutdown_request. `activeWorkerIds` is a
+	 * secondary set used *only* for the timeout path to know which workers to
+	 * notify — it tracks workers that have reported idle but haven't been shut down.
 	 */
 	private async coordinateTaskQueue(
 		mailboxManager: MailboxManager,
@@ -141,16 +146,16 @@ export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 		remainingTasks: string[],
 		workerCount: number,
 	): Promise<void> {
-		let activeWorkers = workerCount
+		let pendingWorkers = workerCount
 		const activeWorkerIds = new Set<string>()
 
-		while (activeWorkers > 0) {
+		while (pendingWorkers > 0) {
 			const msg = await mailboxManager.waitForLeaderMessage(sessionId, { timeoutMs: 120_000 })
 
 			if (!msg) {
 				// Safety timeout — send shutdown to all known active workers before exiting.
 				console.warn(
-					`[SpawnSwarm] Timed out waiting for worker response — sending shutdown to ${activeWorkerIds.size} active worker(s).`,
+					`[SpawnSwarm] Timed out waiting for worker response — sending shutdown to ${activeWorkerIds.size} tracked worker(s).`,
 				)
 				for (const id of activeWorkerIds) {
 					await mailboxManager.shutdownWorker(sessionId, id).catch(() => {})
@@ -169,7 +174,7 @@ export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 			} else {
 				await mailboxManager.shutdownWorker(sessionId, workerId)
 				activeWorkerIds.delete(workerId)
-				activeWorkers--
+				pendingWorkers--
 			}
 		}
 	}
@@ -198,6 +203,10 @@ export class SpawnSwarmTool extends BaseTool<"spawn_swarm"> {
 		provider.mailboxManager.createFileMailbox(sessionId, mailboxDir)
 
 		const cliBackend = getWorkerBackend("cli")
+		if (!cliBackend) {
+			pushToolResult(formatResponse.toolError("CLI worker backend is not available in this environment"))
+			return
+		}
 
 		// Spawn all workers.
 		for (const worker of workers) {

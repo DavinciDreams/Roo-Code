@@ -46,14 +46,6 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 
 		let baseURL = process.env.ROO_CODE_PROVIDER_URL ?? ""
 
-		// Guard: an explicitly empty env var would cause the OpenAI client to silently
-		// fall back to api.openai.com, routing Morse Cloud requests to the wrong server.
-		if (!baseURL) {
-			throw new Error(
-				"Morse Cloud provider URL is not configured. Set ROO_CODE_PROVIDER_URL or configure the provider URL in settings.",
-			)
-		}
-
 		// Ensure baseURL ends with /v1 for OpenAI client, but don't duplicate it
 		if (baseURL && !baseURL.endsWith("/v1")) {
 			baseURL = `${baseURL}/v1`
@@ -85,6 +77,14 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		metadata?: ApiHandlerCreateMessageMetadata,
 		requestOptions?: OpenAI.RequestOptions,
 	) {
+		// Defer the baseURL guard to the first API call so handler construction
+		// (which happens during settings load) does not throw when the env var is absent.
+		if (!this.fetcherBaseURL) {
+			throw new Error(
+				"Morse Cloud provider URL is not configured. Set ROO_CODE_PROVIDER_URL or configure the provider URL in settings.",
+			)
+		}
+
 		const { id: model, info } = this.getModel()
 
 		// Get model parameters including reasoning
