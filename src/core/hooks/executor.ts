@@ -71,9 +71,13 @@ async function executeCommandHook(
 
 	// Wrap command for different shells
 	if (shell === "powershell") {
-		command = `powershell -Command "${command.replace(/"/g, '\\"')}"`
+		// Escape backslashes first, then double-quotes, to prevent shell injection
+		const escaped = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+		command = `powershell -Command "${escaped}"`
 	} else if (shell === "cmd") {
-		command = `cmd /c "${command}"`
+		// Escape % (variable expansion) and ^ (cmd escape char) to prevent injection
+		const escaped = command.replace(/\^/g, "^^").replace(/%/g, "%%")
+		command = `cmd /c "${escaped}"`
 	}
 
 	try {
