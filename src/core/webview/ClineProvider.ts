@@ -1834,14 +1834,18 @@ export class ClineProvider
 		return { historyItem, aggregatedCosts }
 	}
 
-	async showTaskWithId(id: string) {
+	async showTaskWithId(id: string, focus = true) {
 		if (id !== this.getCurrentTask()?.taskId) {
 			// Non-current task.
 			const { historyItem } = await this.getTaskWithId(id)
 			await this.createTaskWithHistoryItem(historyItem) // Clears existing task.
 		}
 
-		await this.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
+		// Only steal focus when the user explicitly navigates to a task.
+		// Delegation reopens pass focus=false to avoid hijacking the cursor.
+		if (focus) {
+			await this.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
+		}
 	}
 
 	async exportTaskWithId(id: string) {
@@ -3114,8 +3118,9 @@ export class ClineProvider
 
 	public resumeTask(taskId: string): void {
 		// Use the existing showTaskWithId method which handles both current and
-		// historical tasks.
-		this.showTaskWithId(taskId).catch((error) => {
+		// historical tasks. Pass focus=false so delegation reopens don't hijack
+		// the user's cursor when a child task completes in the background.
+		this.showTaskWithId(taskId, false).catch((error) => {
 			this.log(`Failed to resume task ${taskId}: ${error.message}`)
 		})
 	}
