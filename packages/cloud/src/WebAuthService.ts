@@ -36,7 +36,9 @@ export class WebAuthService extends EventEmitter<AuthServiceEvents> implements A
 		}
 
 		// Start in logged-out state — no credentials loading, no timer, no HTTP calls.
+		const previousState = this.state
 		this.state = "logged-out"
+		this.emit("auth-state-changed", { state: this.state, previousState })
 		this.log("[auth] Cloud features disabled — initialized in logged-out state")
 	}
 

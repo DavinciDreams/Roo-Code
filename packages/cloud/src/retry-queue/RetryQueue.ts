@@ -1,4 +1,4 @@
-import { EventEmitter } from "events"
+﻿import { EventEmitter } from "events"
 import type { ExtensionContext } from "vscode"
 import type { QueuedRequest, QueueStats, RetryQueueConfig, RetryQueueEvents } from "./types.js"
 
@@ -70,7 +70,7 @@ export class RetryQueue extends EventEmitter<RetryQueueEvents> {
 		}
 	}
 
-	// Cloud features disabled â€” enqueue is a no-op to prevent any HTTP calls
+	// Cloud features disabled - enqueue is a no-op to prevent any HTTP calls
 	public async enqueue(
 		_url: string,
 		_options: RequestInit,
@@ -173,47 +173,9 @@ export class RetryQueue extends EventEmitter<RetryQueueEvents> {
 		}
 	}
 
-	private async retryRequest(request: QueuedRequest): Promise<Response> {
-		this.log(`[RetryQueue] Retrying request: ${request.url}`)
-
-		// Cloud features disabled â€” skip actual HTTP fetch, return fake success
-		this.log(`[RetryQueue] Cloud features disabled - skipping request to ${request.url}`)
-
-		const controller = new AbortController()
-		const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout)
-
-		try {
-			// Return a fake successful response instead of making a real HTTP call
-			const response = new Response(JSON.stringify({ success: true }), {
-				status: 200,
-				statusText: "OK",
-				headers: { "Content-Type": "application/json" },
-			})
-
-			clearTimeout(timeoutId)
-
-			// Check for error status codes that should trigger retry
-			if (!response.ok) {
-				// Handle different status codes appropriately
-				if (response.status >= 500) {
-					// Server errors (5xx) should be retried
-					throw new Error(`Server error: ${response.status} ${response.statusText}`)
-				} else if (response.status === 429) {
-					// Rate limiting - return response to let caller handle Retry-After
-					return response
-				} else if (response.status >= 400 && response.status < 500) {
-					// Client errors (4xx including 401/403) should NOT be retried
-					// These errors indicate problems with the request itself that won't be fixed by retrying
-					this.log(`[RetryQueue] Non-retryable client error ${response.status}, removing from queue`)
-					return response
-				}
-			}
-
-			return response
-		} catch (error) {
-			clearTimeout(timeoutId)
-			throw error
-		}
+	private async retryRequest(_request: QueuedRequest): Promise<Response> {
+		// Cloud features disabled - retries never execute
+		throw new Error("Cloud features disabled")
 	}
 
 	private startRetryTimer(): void {

@@ -8,9 +8,12 @@ import {
 	TelemetryEventSubscription,
 } from "@roo-code/types"
 
+interface TelemetryPropertiesProvider {
+	getTelemetryProperties(): Promise<TelemetryEvent["properties"]>
+}
+
 abstract class BaseTelemetryClient implements TelemetryClient {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	protected providerRef: WeakRef<any> | null = null
+	protected providerRef: WeakRef<TelemetryPropertiesProvider> | null = null
 	protected telemetryEnabled: boolean = false
 
 	constructor(
@@ -67,8 +70,7 @@ abstract class BaseTelemetryClient implements TelemetryClient {
 
 	public async captureException(_error: Error, _additionalProperties?: Record<string, unknown>): Promise<void> {}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	public setProvider(provider: any): void {
+	public setProvider(provider: TelemetryPropertiesProvider): void {
 		this.providerRef = new WeakRef(provider)
 	}
 

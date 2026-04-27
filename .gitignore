@@ -55,4 +55,6 @@ qdrant_storage/
 plans/
 
 roo-cli-*.tar.gz*
-`nnul
+
+# Windows null device artifact
+nul

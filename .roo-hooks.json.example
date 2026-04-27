@@ -1,5 +1,5 @@
 {
-	"_comment": "Example hooks configuration file for Roo Code. Rename to .roo-hooks.json to use.",
+	"_comment": "Example hooks configuration file for Morse Code. Rename to .roo-hooks.json to use.",
 	"_comment2": "Hooks are executed before (PreCompact) and after (PostCompact) context condensation.",
 	"_comment3": "Each hook can be a command (shell command) or http (HTTP POST request).",
 	"PreCompact": [

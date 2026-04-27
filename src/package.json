@@ -18,9 +18,9 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/DavinciDreams/Roo-Code"
+		"url": "https://github.com/DavinciDreams/Morse-Code"
 	},
-	"homepage": "https://github.com/DavinciDreams/Roo-Code",
+	"homepage": "https://github.com/DavinciDreams/Morse-Code",
 	"categories": [
 		"AI",
 		"Chat",
