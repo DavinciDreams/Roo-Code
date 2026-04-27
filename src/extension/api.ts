@@ -139,7 +139,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 						try {
 							const models = await getModels({
 								provider: "roo" as const,
-								baseUrl: process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy",
+								baseUrl: process.env.ROO_CODE_PROVIDER_URL ?? "",
 								apiKey: CloudService.hasInstance()
 									? CloudService.instance.authService?.getSessionToken()
 									: undefined,

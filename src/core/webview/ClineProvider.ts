@@ -70,6 +70,7 @@ import WorkspaceTracker from "../../integrations/workspace/WorkspaceTracker"
 
 import { McpHub } from "../../services/mcp/McpHub"
 import { McpServerManager } from "../../services/mcp/McpServerManager"
+import { worktreeService } from "@roo-code/core"
 import { MarketplaceManager } from "../../services/marketplace"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { CodeIndexManager } from "../../services/code-index/manager"
@@ -1265,8 +1266,8 @@ export class ClineProvider
 			`style-src ${webview.cspSource} 'unsafe-inline' https://* http://${localServerUrl} http://0.0.0.0:${localPort}`,
 			`img-src ${webview.cspSource} https://storage.googleapis.com https://img.clerk.com data:`,
 			`media-src ${webview.cspSource}`,
-			`script-src 'unsafe-eval' ${webview.cspSource} https://* https://*.posthog.com http://${localServerUrl} http://0.0.0.0:${localPort} 'nonce-${nonce}'`,
-			`connect-src ${webview.cspSource} ${openRouterDomain} https://* https://*.posthog.com ws://${localServerUrl} ws://0.0.0.0:${localPort} http://${localServerUrl} http://0.0.0.0:${localPort}`,
+			`script-src 'unsafe-eval' ${webview.cspSource} https://* http://${localServerUrl} http://0.0.0.0:${localPort} 'nonce-${nonce}'`,
+			`connect-src ${webview.cspSource} ${openRouterDomain} https://* ws://${localServerUrl} ws://0.0.0.0:${localPort} http://${localServerUrl} http://0.0.0.0:${localPort}`,
 		]
 
 		return /*html*/ `
@@ -1283,7 +1284,7 @@ export class ClineProvider
 						window.AUDIO_BASE_URI = "${audioUri}"
 						window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 					</script>
-					<title>Roo Code</title>
+					<title>Moo Code</title>
 				</head>
 				<body>
 					<div id="root"></div>
@@ -1362,7 +1363,7 @@ export class ClineProvider
 				window.AUDIO_BASE_URI = "${audioUri}"
 				window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 			</script>
-            <title>Roo Code</title>
+            <title>Moo Code</title>
           </head>
           <body>
             <noscript>You need to enable JavaScript to run this app.</noscript>
@@ -2232,7 +2233,7 @@ export class ClineProvider
 			// Ignore this error.
 		}
 
-		const telemetryKey = process.env.POSTHOG_API_KEY
+		const telemetryKey = "" // Telemetry disabled — PostHog key injection removed
 		const machineId = vscode.env.machineId
 		const mergedAllowedCommands = this.mergeAllowedCommands(allowedCommands)
 		const mergedDeniedCommands = this.mergeDeniedCommands(deniedCommands)
@@ -2881,6 +2882,39 @@ export class ClineProvider
 		return this.recentTasksCache
 	}
 
+	/**
+	 * Returns a snapshot of the parallel-queue state for a given task.
+	 * Useful for debugging and UI introspection of background/queued work.
+	 */
+	public async getParallelTaskStatus(
+		taskId: string,
+	): Promise<import("@roo-code/types").ParallelTaskStatus | undefined> {
+		try {
+			const { historyItem } = await this.getTaskWithId(taskId)
+			const activeChild = this.getCurrentTask()
+			const activeChildId =
+				activeChild && historyItem.awaitingChildId === activeChild.taskId ? activeChild.taskId : undefined
+			return {
+				taskId,
+				historyStatus: historyItem.status,
+				worktreePath: historyItem.worktreePath,
+				queuedTasks: (historyItem.parallelQueue ?? []).map(({ mode, message, worktree }) => ({
+					mode,
+					message,
+					worktree,
+				})),
+				completedResults: (historyItem.parallelResults ?? []).map(({ taskId: tid, summary, error }) => ({
+					taskId: tid,
+					summary,
+					error,
+				})),
+				activeChildId,
+			}
+		} catch {
+			return undefined
+		}
+	}
+
 	// When initializing a new task, (not from history but from a tool command
 	// new_task) there is no need to remove the previous task since the new
 	// task is a subtask of the previous one, and when it finishes it is removed
@@ -3233,8 +3267,11 @@ export class ClineProvider
 		message: string
 		initialTodos: TodoItem[]
 		mode: string
+		worktree?: string
+		abortOnChildFailure?: boolean
+		parallelQueue?: Array<{ mode: string; message: string; worktree?: string; todos?: string }>
 	}): Promise<Task> {
-		const { parentTaskId, message, initialTodos, mode } = params
+		const { parentTaskId, message, initialTodos, mode, worktree, abortOnChildFailure, parallelQueue } = params
 
 		// Metadata-driven delegation is always enabled
 
@@ -3310,24 +3347,55 @@ export class ClineProvider
 			)
 		}
 
-		// 4) Create child as sole active (parent reference preserved for lineage)
+		// 4) Optionally create a git worktree for filesystem isolation.
+		let childWorktreePath: string | undefined
+		if (worktree) {
+			try {
+				const shortId = parentTaskId.slice(-8)
+				const branchName = worktree === "auto" ? `roo/task-${shortId}-${Date.now().toString(36)}` : worktree
+				const worktreeBase = path.join(os.homedir(), ".roo", "worktrees")
+				const projectName = path.basename(parent.workspacePath)
+				const worktreeDest = path.join(worktreeBase, `${projectName}-${shortId}`)
+				const result = await worktreeService.createWorktree(parent.workspacePath, {
+					path: worktreeDest,
+					branch: branchName,
+					createNewBranch: true,
+				})
+				if (result.success) {
+					childWorktreePath = worktreeDest
+					this.log(`[delegateParentAndOpenChild] Created worktree at ${worktreeDest} on branch ${branchName}`)
+					TelemetryService.instance.captureWorktreeCreated(parentTaskId, worktreeDest)
+				} else {
+					this.log(`[delegateParentAndOpenChild] Worktree creation failed (non-fatal): ${result.message}`)
+				}
+			} catch (err) {
+				this.log(
+					`[delegateParentAndOpenChild] Worktree creation error (non-fatal): ${
+						(err as Error)?.message ?? String(err)
+					}`,
+				)
+			}
+		}
+
+		// 5) Create child as sole active (parent reference preserved for lineage).
 		// Pass initialStatus: "active" to ensure the child task's historyItem is created
 		// with status from the start, avoiding race conditions where the task might
 		// call attempt_completion before status is persisted separately.
 		//
 		// Pass startTask: false to prevent the child from beginning its task loop
 		// (and writing to globalState via saveClineMessages → updateTaskHistory)
-		// before we persist the parent's delegation metadata in step 5.
-		// Without this, the child's fire-and-forget startTask() races with step 5,
+		// before we persist the parent's delegation metadata in step 6.
+		// Without this, the child's fire-and-forget startTask() races with step 6,
 		// and the last writer to globalState overwrites the other's changes—
 		// causing the parent's delegation fields to be lost.
 		const child = await this.createTask(message, undefined, parent as any, {
 			initialTodos,
 			initialStatus: "active",
 			startTask: false,
+			workspacePath: childWorktreePath,
 		})
 
-		// 5) Persist parent delegation metadata BEFORE the child starts writing.
+		// 6) Persist parent delegation metadata BEFORE the child starts writing.
 		try {
 			const { historyItem } = await this.getTaskWithId(parentTaskId)
 			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), child.taskId]))
@@ -3337,6 +3405,9 @@ export class ClineProvider
 				delegatedToId: child.taskId,
 				awaitingChildId: child.taskId,
 				childIds,
+				// Store the parallel queue in the parent so reopenParentFromDelegation can drain it
+				...(parallelQueue && parallelQueue.length > 0 ? { parallelQueue } : {}),
+				...(abortOnChildFailure !== undefined ? { abortOnChildFailure } : {}),
 			}
 			await this.updateTaskHistory(updatedHistory)
 		} catch (err) {
@@ -3347,14 +3418,32 @@ export class ClineProvider
 			)
 		}
 
-		// 6) Start the child task now that parent metadata is safely persisted.
+		// 7) Persist the child's worktree path so it can be cleaned up on completion.
+		if (childWorktreePath) {
+			try {
+				const { historyItem: childHistory } = await this.getTaskWithId(child.taskId)
+				await this.updateTaskHistory({ ...childHistory, worktreePath: childWorktreePath })
+			} catch {
+				// non-fatal
+			}
+		}
+
+		// 8) Start the child task now that parent metadata is safely persisted.
 		child.start()
 
-		// 7) Emit TaskDelegated (provider-level)
+		// 9) Emit TaskSpawned and TaskDelegated (provider-level)
 		try {
+			this.emit(RooCodeEventName.TaskSpawned, child.taskId)
 			this.emit(RooCodeEventName.TaskDelegated, parentTaskId, child.taskId)
 		} catch {
 			// non-fatal
+		}
+
+		if (parallelQueue && parallelQueue.length > 0) {
+			TelemetryService.instance.captureParallelTaskSpawned(parentTaskId, parallelQueue.length + 1)
+			this.log(
+				`[delegateParentAndOpenChild] Parallel queue: ${parallelQueue.length + 1} tasks queued for parent ${parentTaskId}`,
+			)
 		}
 
 		return child
@@ -3367,8 +3456,11 @@ export class ClineProvider
 		parentTaskId: string
 		childTaskId: string
 		completionResultSummary: string
+		completionPayload?: Record<string, unknown>
+		/** Set to true when the child task failed or was aborted, for error aggregation and abortOnChildFailure checks. */
+		childFailed?: boolean
 	}): Promise<void> {
-		const { parentTaskId, childTaskId, completionResultSummary } = params
+		const { parentTaskId, childTaskId, completionResultSummary, completionPayload, childFailed } = params
 		const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
 
 		// 1) Load parent from history and current persisted messages
@@ -3376,115 +3468,19 @@ export class ClineProvider
 
 		let parentClineMessages: ClineMessage[] = []
 		try {
-			parentClineMessages = await readTaskMessages({
-				taskId: parentTaskId,
-				globalStoragePath,
-			})
+			parentClineMessages = await readTaskMessages({ taskId: parentTaskId, globalStoragePath })
 		} catch {
 			parentClineMessages = []
 		}
 
 		let parentApiMessages: any[] = []
 		try {
-			parentApiMessages = (await readApiMessages({
-				taskId: parentTaskId,
-				globalStoragePath,
-			})) as any[]
+			parentApiMessages = (await readApiMessages({ taskId: parentTaskId, globalStoragePath })) as any[]
 		} catch {
 			parentApiMessages = []
 		}
 
-		// 2) Inject synthetic records: UI subtask_result and update API tool_result
-		const ts = Date.now()
-
-		// Defensive: ensure arrays
-		if (!Array.isArray(parentClineMessages)) parentClineMessages = []
-		if (!Array.isArray(parentApiMessages)) parentApiMessages = []
-
-		const subtaskUiMessage: ClineMessage = {
-			type: "say",
-			say: "subtask_result",
-			text: completionResultSummary,
-			ts,
-		}
-		parentClineMessages.push(subtaskUiMessage)
-		await saveTaskMessages({ messages: parentClineMessages, taskId: parentTaskId, globalStoragePath })
-
-		// Find the tool_use_id from the last assistant message's new_task tool_use
-		let toolUseId: string | undefined
-		for (let i = parentApiMessages.length - 1; i >= 0; i--) {
-			const msg = parentApiMessages[i]
-			if (msg.role === "assistant" && Array.isArray(msg.content)) {
-				for (const block of msg.content) {
-					if (block.type === "tool_use" && block.name === "new_task") {
-						toolUseId = block.id
-						break
-					}
-				}
-				if (toolUseId) break
-			}
-		}
-
-		// Preferred: if the parent history contains the native tool_use for new_task,
-		// inject a matching tool_result for the Anthropic message contract:
-		// user → assistant (tool_use) → user (tool_result)
-		if (toolUseId) {
-			// Check if the last message is already a user message with a tool_result for this tool_use_id
-			// (in case this is a retry or the history was already updated)
-			const lastMsg = parentApiMessages[parentApiMessages.length - 1]
-			let alreadyHasToolResult = false
-			if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
-				for (const block of lastMsg.content) {
-					if (block.type === "tool_result" && block.tool_use_id === toolUseId) {
-						// Update the existing tool_result content
-						block.content = `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`
-						alreadyHasToolResult = true
-						break
-					}
-				}
-			}
-
-			// If no existing tool_result found, create a NEW user message with the tool_result
-			if (!alreadyHasToolResult) {
-				parentApiMessages.push({
-					role: "user",
-					content: [
-						{
-							type: "tool_result" as const,
-							tool_use_id: toolUseId,
-							content: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
-						},
-					],
-					ts,
-				})
-			}
-
-			// Validate the newly injected tool_result against the preceding assistant message.
-			// This ensures the tool_result's tool_use_id matches a tool_use in the immediately
-			// preceding assistant message (Anthropic API requirement).
-			const lastMessage = parentApiMessages[parentApiMessages.length - 1]
-			if (lastMessage?.role === "user") {
-				const validatedMessage = validateAndFixToolResultIds(lastMessage, parentApiMessages.slice(0, -1))
-				parentApiMessages[parentApiMessages.length - 1] = validatedMessage
-			}
-		} else {
-			// If there is no corresponding tool_use in the parent API history, we cannot emit a
-			// tool_result. Fall back to a plain user text note so the parent can still resume.
-			parentApiMessages.push({
-				role: "user",
-				content: [
-					{
-						type: "text" as const,
-						text: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
-					},
-				],
-				ts,
-			})
-		}
-
-		await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
-
-		// 3) Close child instance if still open (single-open-task invariant).
+		// 2) Close child instance if still open (single-open-task invariant).
 		//    This MUST happen BEFORE updating the child's status to "completed" because
 		//    removeClineFromStack() → abortTask(true) → saveClineMessages() writes
 		//    the historyItem with initialStatus (typically "active"), which would
@@ -3494,14 +3490,15 @@ export class ClineProvider
 			await this.removeClineFromStack()
 		}
 
-		// 4) Update child metadata to "completed" status.
-		//    This runs after the abort so it overwrites the stale "active" status
-		//    that saveClineMessages() may have written during step 3.
+		// 3) Update child metadata to "completed" and clean up its worktree (if any).
+		let childWorktreePath: string | undefined
 		try {
 			const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
+			childWorktreePath = childHistory.worktreePath
 			await this.updateTaskHistory({
 				...childHistory,
 				status: "completed",
+				completionPayload: completionPayload,
 			})
 		} catch (err) {
 			this.log(
@@ -3511,7 +3508,213 @@ export class ClineProvider
 			)
 		}
 
-		// 5) Update parent metadata and persist BEFORE emitting completion event
+		if (childWorktreePath) {
+			try {
+				await worktreeService.deleteWorktree(historyItem.workspace ?? this.cwd, childWorktreePath)
+				this.log(`[reopenParentFromDelegation] Deleted worktree at ${childWorktreePath}`)
+				TelemetryService.instance.captureWorktreeDeleted(childTaskId, childWorktreePath)
+			} catch (err) {
+				this.log(
+					`[reopenParentFromDelegation] Worktree cleanup failed (non-fatal): ${
+						(err as Error)?.message ?? String(err)
+					}`,
+				)
+			}
+		}
+
+		// 4) Handle parallel queue: if the parent has more tasks queued, start the next one
+		//    instead of resuming the parent. The parent resumes only when the queue is empty.
+		const errorMessage = childFailed
+			? completionResultSummary || "Child task failed or was aborted"
+			: (completionPayload?.error as string | undefined)
+		const currentResult = {
+			taskId: childTaskId,
+			summary: completionResultSummary,
+			payload: completionPayload,
+			...(errorMessage ? { error: errorMessage } : {}),
+		}
+		const accumulatedResults = [...(historyItem.parallelResults ?? []), currentResult]
+		const remainingQueue = historyItem.parallelQueue ?? []
+
+		if (childFailed) {
+			TelemetryService.instance.captureParallelTaskChildFailed(parentTaskId, childTaskId)
+		}
+
+		// If abortOnChildFailure is set and the child failed, abandon the remaining queue
+		// and return the partial results immediately to the parent.
+		const shouldAbort = childFailed && historyItem.abortOnChildFailure === true
+		if (shouldAbort && remainingQueue.length > 0) {
+			this.log(
+				`[reopenParentFromDelegation] Aborting parallel queue for parent ${parentTaskId}: child ${childTaskId} failed and abortOnChildFailure is set`,
+			)
+		}
+
+		if (remainingQueue.length > 0 && !shouldAbort) {
+			// There are more parallel tasks to run — start the next one.
+			const [nextTask, ...rest] = remainingQueue
+
+			// Persist the result so far and reduce the queue
+			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
+			await this.updateTaskHistory({
+				...historyItem,
+				status: "delegated",
+				completedByChildId: childTaskId,
+				completionResultSummary,
+				childIds,
+				parallelQueue: rest,
+				parallelResults: accumulatedResults,
+				awaitingChildId: undefined, // will be set by delegateParentAndOpenChild
+			})
+
+			try {
+				this.emit(RooCodeEventName.TaskDelegationCompleted, parentTaskId, childTaskId, completionResultSummary)
+			} catch {
+				// non-fatal
+			}
+
+			// Mode-switch to the next task's mode, then start it
+			try {
+				await this.handleModeSwitch(nextTask.mode as any)
+			} catch {
+				// non-fatal
+			}
+
+			let nextTodoItems: TodoItem[] = []
+			if (nextTask.todos) {
+				try {
+					const { parseMarkdownChecklist } = await import("../tools/UpdateTodoListTool")
+					nextTodoItems = parseMarkdownChecklist(nextTask.todos)
+				} catch {
+					// non-fatal: start with empty todos
+				}
+			}
+
+			// Re-fetch history so delegateParentAndOpenChild sees the updated queue state
+			const { historyItem: refreshedParentHistory } = await this.getTaskWithId(parentTaskId)
+			// Create worktree before task so we have the path ready; use parentTaskId as name hint
+			const nextChildWorktreePath = nextTask.worktree
+				? await this._createWorktreeForTask(
+						refreshedParentHistory.workspace ?? this.cwd,
+						nextTask.worktree,
+						parentTaskId,
+					)
+				: undefined
+			const nextChild = await this.createTask(nextTask.message, undefined, undefined, {
+				initialTodos: nextTodoItems,
+				initialStatus: "active",
+				startTask: false,
+				workspacePath: nextChildWorktreePath,
+			})
+
+			// Record the next child in parent history
+			const updatedChildIds = Array.from(new Set([...(refreshedParentHistory.childIds ?? []), nextChild.taskId]))
+			await this.updateTaskHistory({
+				...refreshedParentHistory,
+				delegatedToId: nextChild.taskId,
+				awaitingChildId: nextChild.taskId,
+				childIds: updatedChildIds,
+			})
+
+			if (nextChildWorktreePath) {
+				try {
+					const { historyItem: nextChildHistory } = await this.getTaskWithId(nextChild.taskId)
+					await this.updateTaskHistory({ ...nextChildHistory, worktreePath: nextChildWorktreePath })
+				} catch {
+					// non-fatal
+				}
+			}
+
+			nextChild.start()
+			try {
+				this.emit(RooCodeEventName.TaskSpawned, nextChild.taskId)
+				this.emit(RooCodeEventName.TaskDelegated, parentTaskId, nextChild.taskId)
+			} catch {
+				// non-fatal
+			}
+			return
+		}
+
+		// 5) All tasks done (or this was a plain new_task). Build the tool result content.
+		if (!Array.isArray(parentClineMessages)) parentClineMessages = []
+		if (!Array.isArray(parentApiMessages)) parentApiMessages = []
+
+		const ts = Date.now()
+		const isParallelFanIn = accumulatedResults.length > 1
+
+		// Determine result text — aggregated JSON for parallel fan-in, plain text otherwise
+		let toolResultContent: string
+		if (isParallelFanIn) {
+			toolResultContent = JSON.stringify(accumulatedResults, null, 2)
+		} else {
+			toolResultContent = `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`
+		}
+
+		const subtaskUiMessage: ClineMessage = {
+			type: "say",
+			say: "subtask_result",
+			text: isParallelFanIn
+				? `All ${accumulatedResults.length} parallel tasks completed:\n${toolResultContent}`
+				: completionResultSummary,
+			ts,
+		}
+		parentClineMessages.push(subtaskUiMessage)
+		await saveTaskMessages({ messages: parentClineMessages, taskId: parentTaskId, globalStoragePath })
+
+		// Find the matching tool_use_id — supports both new_task and spawn_parallel_tasks
+		let toolUseId: string | undefined
+		for (let i = parentApiMessages.length - 1; i >= 0; i--) {
+			const msg = parentApiMessages[i]
+			if (msg.role === "assistant" && Array.isArray(msg.content)) {
+				for (const block of msg.content) {
+					if (
+						block.type === "tool_use" &&
+						(block.name === "new_task" || block.name === "spawn_parallel_tasks")
+					) {
+						toolUseId = block.id
+						break
+					}
+				}
+				if (toolUseId) break
+			}
+		}
+
+		if (toolUseId) {
+			const lastMsg = parentApiMessages[parentApiMessages.length - 1]
+			let alreadyHasToolResult = false
+			if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
+				for (const block of lastMsg.content) {
+					if (block.type === "tool_result" && block.tool_use_id === toolUseId) {
+						block.content = toolResultContent
+						alreadyHasToolResult = true
+						break
+					}
+				}
+			}
+
+			if (!alreadyHasToolResult) {
+				parentApiMessages.push({
+					role: "user",
+					content: [{ type: "tool_result" as const, tool_use_id: toolUseId, content: toolResultContent }],
+					ts,
+				})
+			}
+
+			const lastMessage = parentApiMessages[parentApiMessages.length - 1]
+			if (lastMessage?.role === "user") {
+				const validatedMessage = validateAndFixToolResultIds(lastMessage, parentApiMessages.slice(0, -1))
+				parentApiMessages[parentApiMessages.length - 1] = validatedMessage
+			}
+		} else {
+			parentApiMessages.push({
+				role: "user",
+				content: [{ type: "text" as const, text: toolResultContent }],
+				ts,
+			})
+		}
+
+		await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
+
+		// 6) Update parent metadata and persist BEFORE emitting completion event
 		const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
 		const updatedHistory: typeof historyItem = {
 			...historyItem,
@@ -3520,21 +3723,37 @@ export class ClineProvider
 			completionResultSummary,
 			awaitingChildId: undefined,
 			childIds,
+			parallelQueue: undefined,
+			parallelResults: undefined,
+			abortOnChildFailure: undefined,
 		}
 		await this.updateTaskHistory(updatedHistory)
 
-		// 6) Emit TaskDelegationCompleted (provider-level)
+		if (isParallelFanIn) {
+			const hadFailures = accumulatedResults.some((r) => r.error !== undefined)
+			TelemetryService.instance.captureParallelTaskCompleted(
+				parentTaskId,
+				accumulatedResults.length,
+				accumulatedResults.length,
+				hadFailures,
+			)
+			this.log(
+				`[reopenParentFromDelegation] Parallel fan-in complete for parent ${parentTaskId}: ${accumulatedResults.length} tasks, failures=${hadFailures}`,
+			)
+		}
+
+		// 7) Emit TaskDelegationCompleted (provider-level)
 		try {
 			this.emit(RooCodeEventName.TaskDelegationCompleted, parentTaskId, childTaskId, completionResultSummary)
 		} catch {
 			// non-fatal
 		}
 
-		// 7) Reopen the parent from history as the sole active task (restores saved mode)
+		// 8) Reopen the parent from history as the sole active task (restores saved mode)
 		//    IMPORTANT: startTask=false to suppress resume-from-history ask scheduling
 		const parentInstance = await this.createTaskWithHistoryItem(updatedHistory, { startTask: false })
 
-		// 8) Inject restored histories into the in-memory instance before resuming
+		// 9) Inject restored histories into the in-memory instance before resuming
 		if (parentInstance) {
 			try {
 				await parentInstance.overwriteClineMessages(parentClineMessages)
@@ -3551,11 +3770,107 @@ export class ClineProvider
 			await parentInstance.resumeAfterDelegation()
 		}
 
-		// 9) Emit TaskDelegationResumed (provider-level)
+		// 10) Emit TaskDelegationResumed (provider-level)
 		try {
 			this.emit(RooCodeEventName.TaskDelegationResumed, parentTaskId, childTaskId)
 		} catch {
 			// non-fatal
+		}
+	}
+
+	/**
+	 * Scans task history for orphaned worktrees — directories that still exist on disk but whose
+	 * tasks are no longer running. This can happen if VS Code crashes mid-task.
+	 * Logs findings and emits telemetry; offers optional VS Code notification for cleanup.
+	 */
+	public async detectAndCleanOrphanedWorktrees(): Promise<void> {
+		try {
+			const allHistory = this.taskHistoryStore.getAll()
+			const activeTaskIds = new Set(this.clineStack.map((t) => t.taskId))
+			const orphans: Array<{ taskId: string; worktreePath: string }> = []
+
+			for (const item of allHistory) {
+				if (!item.worktreePath) continue
+				// A completed task whose worktree dir still exists is an orphan
+				if (item.status === "completed" || (item.status !== "active" && !activeTaskIds.has(item.id))) {
+					try {
+						const { default: fss } = await import("fs")
+						if (fss.existsSync(item.worktreePath)) {
+							orphans.push({ taskId: item.id, worktreePath: item.worktreePath })
+						}
+					} catch {
+						// non-fatal
+					}
+				}
+			}
+
+			if (orphans.length === 0) return
+
+			for (const { taskId, worktreePath } of orphans) {
+				this.log(
+					`[detectAndCleanOrphanedWorktrees] Orphaned worktree detected: ${worktreePath} (task ${taskId})`,
+				)
+				TelemetryService.instance.captureWorktreeOrphanDetected(worktreePath)
+			}
+
+			const paths = orphans.map((o) => o.worktreePath).join(", ")
+			const action = await vscode.window.showWarningMessage(
+				`Moo Code detected ${orphans.length} orphaned worktree(s) from previous sessions:\n${paths}`,
+				"Clean up",
+				"Ignore",
+			)
+
+			if (action === "Clean up") {
+				for (const { taskId, worktreePath } of orphans) {
+					try {
+						const cwd = this.cwd
+						await worktreeService.deleteWorktree(cwd, worktreePath)
+						this.log(`[detectAndCleanOrphanedWorktrees] Cleaned up worktree: ${worktreePath}`)
+						TelemetryService.instance.captureWorktreeDeleted(taskId, worktreePath)
+						// Clear the worktreePath from the history item
+						const { historyItem } = await this.getTaskWithId(taskId)
+						await this.updateTaskHistory({ ...historyItem, worktreePath: undefined })
+					} catch (err) {
+						this.log(
+							`[detectAndCleanOrphanedWorktrees] Failed to clean worktree ${worktreePath}: ${
+								(err as Error)?.message ?? String(err)
+							}`,
+						)
+					}
+				}
+			}
+		} catch (err) {
+			this.log(
+				`[detectAndCleanOrphanedWorktrees] Error during orphan scan (non-fatal): ${
+					(err as Error)?.message ?? String(err)
+				}`,
+			)
+		}
+	}
+
+	/** Creates a worktree for a child task, returning the path on success or undefined on failure. */
+	private async _createWorktreeForTask(
+		parentWorkspacePath: string,
+		worktree: string,
+		taskIdHint?: string,
+	): Promise<string | undefined> {
+		try {
+			const shortId = taskIdHint ? taskIdHint.slice(-8) : Math.random().toString(36).slice(2, 8)
+			const branchName = worktree === "auto" ? `roo/task-${shortId}-${Date.now().toString(36)}` : worktree
+			const worktreeBase = path.join(os.homedir(), ".roo", "worktrees")
+			const projectName = path.basename(parentWorkspacePath)
+			const worktreeDest = path.join(worktreeBase, `${projectName}-${shortId}`)
+			const result = await worktreeService.createWorktree(parentWorkspacePath, {
+				path: worktreeDest,
+				branch: branchName,
+				createNewBranch: true,
+			})
+			if (result.success && taskIdHint) {
+				TelemetryService.instance.captureWorktreeCreated(taskIdHint, worktreeDest)
+			}
+			return result.success ? worktreeDest : undefined
+		} catch {
+			return undefined
 		}
 	}
 

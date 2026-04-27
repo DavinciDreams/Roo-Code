@@ -100,7 +100,7 @@ async function checkWorktreeAutoOpen(
 			// Open the Roo Code sidebar with a slight delay to ensure UI is ready
 			setTimeout(async () => {
 				try {
-					await vscode.commands.executeCommand("roo-cline.plusButtonClicked")
+					await vscode.commands.executeCommand("moo-code.plusButtonClicked")
 				} catch (error) {
 					outputChannel.appendLine(
 						`[Worktree] Error auto-opening sidebar: ${error instanceof Error ? error.message : String(error)}`,
@@ -137,11 +137,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize telemetry service.
 	const telemetryService = TelemetryService.createInstance()
 
-	try {
-		telemetryService.register(new PostHogTelemetryClient())
-	} catch (error) {
-		console.warn("Failed to register PostHogTelemetryClient:", error)
-	}
+	// Telemetry disabled — PostHogTelemetryClient registration removed
+	// try {
+	// 	telemetryService.register(new PostHogTelemetryClient())
+	// } catch (error) {
+	// 	console.warn("Failed to register PostHogTelemetryClient:", error)
+	// }
 
 	// Create logger for cloud services.
 	const cloudLogger = createDualLogger(createOutputChannelLogger(outputChannel))
@@ -210,7 +211,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						: undefined
 					await refreshModels({
 						provider: "roo",
-						baseUrl: process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy",
+						baseUrl: process.env.ROO_CODE_PROVIDER_URL ?? "",
 						apiKey: sessionToken,
 					})
 				} else {
@@ -268,15 +269,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		"user-info": userInfoHandler,
 	})
 
-	try {
-		if (cloudService.telemetryClient) {
-			TelemetryService.instance.register(cloudService.telemetryClient)
-		}
-	} catch (error) {
-		outputChannel.appendLine(
-			`[CloudService] Failed to register TelemetryClient: ${error instanceof Error ? error.message : String(error)}`,
-		)
-	}
+	// Telemetry disabled — cloud telemetry registration removed
+	// try {
+	// 	if (cloudService.telemetryClient) {
+	// 		TelemetryService.instance.register(cloudService.telemetryClient)
+	// 	}
+	// } catch (error) {
+	// 	outputChannel.appendLine(
+	// 		`[CloudService] Failed to register TelemetryClient: ${error instanceof Error ? error.message : String(error)}`,
+	// 	)
+	// }
 
 	// Add to subscriptions for proper cleanup on deactivate.
 	context.subscriptions.push(cloudService)
@@ -301,6 +303,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Check for worktree auto-open path (set when switching to a worktree)
 	await checkWorktreeAutoOpen(context, outputChannel)
+
+	// Scan for orphaned worktrees from previous sessions (e.g. after a crash).
+	// Run in background so it doesn't delay activation.
+	void provider.detectAndCleanOrphanedWorktrees().catch((err) => {
+		outputChannel.appendLine(
+			`[OrphanWorktree] Startup scan failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+		)
+	})
 
 	// Auto-import configuration if specified in settings.
 	try {

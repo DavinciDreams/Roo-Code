@@ -26,6 +26,9 @@ export interface TaskProviderLike {
 	clearTask(): Promise<void>
 	resumeTask(taskId: string): void
 
+	// Introspection
+	getParallelTaskStatus(taskId: string): Promise<ParallelTaskStatus | undefined>
+
 	// Modes
 	getModes(): Promise<{ slug: string; name: string }[]>
 	getMode(): Promise<string>
@@ -85,6 +88,21 @@ export type TaskProviderEvents = {
 }
 
 /**
+ * ParallelTaskStatus — snapshot of a task's parallel-queue state for introspection.
+ */
+export interface ParallelTaskStatus {
+	taskId: string
+	historyStatus: "active" | "completed" | "delegated" | undefined
+	worktreePath: string | undefined
+	/** Remaining tasks waiting to run */
+	queuedTasks: Array<{ mode: string; message: string; worktree?: string }>
+	/** Results from children that have already completed */
+	completedResults: Array<{ taskId: string; summary: string; error?: string }>
+	/** Task ID of the child currently executing, if any */
+	activeChildId: string | undefined
+}
+
+/**
  * TaskLike
  */
 
@@ -99,6 +117,8 @@ export interface CreateTaskOptions {
 	/** Whether to start the task loop immediately (default: true).
 	 *  When false, the caller must invoke `task.start()` manually. */
 	startTask?: boolean
+	/** Override the workspace path for this task (e.g., a git worktree). Takes priority over parent task's path. */
+	workspacePath?: string
 }
 
 export enum TaskStatus {

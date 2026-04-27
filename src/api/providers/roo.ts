@@ -44,10 +44,10 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 	constructor(options: ApiHandlerOptions) {
 		const sessionToken = options.rooApiKey ?? getSessionToken()
 
-		let baseURL = process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy"
+		let baseURL = process.env.ROO_CODE_PROVIDER_URL ?? ""
 
 		// Ensure baseURL ends with /v1 for OpenAI client, but don't duplicate it
-		if (!baseURL.endsWith("/v1")) {
+		if (baseURL && !baseURL.endsWith("/v1")) {
 			baseURL = `${baseURL}/v1`
 		}
 
@@ -55,7 +55,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		// The provider-proxy server will return 401 if authentication fails.
 		super({
 			...options,
-			providerName: "Roo Code Cloud",
+			providerName: "Moo Code Cloud",
 			baseURL, // Already has /v1 suffix
 			apiKey: sessionToken,
 			defaultProviderModelId: rooDefaultModelId,
@@ -65,9 +65,10 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		// Load dynamic models asynchronously - strip /v1 from baseURL for fetcher
 		this.fetcherBaseURL = baseURL.endsWith("/v1") ? baseURL.slice(0, -3) : baseURL
 
-		this.loadDynamicModels(this.fetcherBaseURL, sessionToken).catch((error) => {
-			console.error("[RooHandler] Failed to load dynamic models:", error)
-		})
+		// Cloud features disabled — skip loading dynamic models from upstream
+		// this.loadDynamicModels(this.fetcherBaseURL, sessionToken).catch((error) => {
+		// 	console.error("[RooHandler] Failed to load dynamic models:", error)
+		// })
 	}
 
 	protected override createStream(
@@ -122,220 +123,18 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		return this.currentReasoningDetails.length > 0 ? this.currentReasoningDetails : undefined
 	}
 
+	// eslint-disable-next-line require-yield
 	override async *createMessage(
 		systemPrompt: string,
 		messages: Anthropic.Messages.MessageParam[],
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
-		try {
-			// Reset reasoning_details accumulator for this request
-			this.currentReasoningDetails = []
-
-			const headers: Record<string, string> = {
-				"X-Roo-App-Version": Package.version,
-			}
-
-			if (metadata?.taskId) {
-				headers["X-Roo-Task-ID"] = metadata.taskId
-			}
-
-			const stream = await this.createStream(systemPrompt, messages, metadata, { headers })
-
-			let lastUsage: RooUsage | undefined = undefined
-			// Accumulator for reasoning_details FROM the API.
-			// We preserve the original shape of reasoning_details to prevent malformed responses.
-			const reasoningDetailsAccumulator = new Map<
-				string,
-				{
-					type: string
-					text?: string
-					summary?: string
-					data?: string
-					id?: string | null
-					format?: string
-					signature?: string
-					index: number
-				}
-			>()
-
-			// Track whether we've yielded displayable text from reasoning_details.
-			// When reasoning_details has displayable content (reasoning.text or reasoning.summary),
-			// we skip yielding the top-level reasoning field to avoid duplicate display.
-			let hasYieldedReasoningFromDetails = false
-
-			for await (const chunk of stream) {
-				const delta = chunk.choices[0]?.delta
-				const finishReason = chunk.choices[0]?.finish_reason
-
-				if (delta) {
-					// Handle reasoning_details array format (used by Gemini 3, Claude, OpenAI o-series, etc.)
-					// See: https://openrouter.ai/docs/use-cases/reasoning-tokens#preserving-reasoning-blocks
-					// Priority: Check for reasoning_details first, as it's the newer format
-					const deltaWithReasoning = delta as typeof delta & {
-						reasoning_details?: Array<{
-							type: string
-							text?: string
-							summary?: string
-							data?: string
-							id?: string | null
-							format?: string
-							signature?: string
-							index?: number
-						}>
-					}
-
-					if (deltaWithReasoning.reasoning_details && Array.isArray(deltaWithReasoning.reasoning_details)) {
-						for (const detail of deltaWithReasoning.reasoning_details) {
-							const index = detail.index ?? 0
-							// Use id as key when available to merge chunks that share the same reasoning block id
-							// This ensures that reasoning.summary and reasoning.encrypted chunks with the same id
-							// are merged into a single object, matching the provider's expected format
-							const key = detail.id ?? `${detail.type}-${index}`
-							const existing = reasoningDetailsAccumulator.get(key)
-
-							if (existing) {
-								// Accumulate text/summary/data for existing reasoning detail
-								if (detail.text !== undefined) {
-									existing.text = (existing.text || "") + detail.text
-								}
-								if (detail.summary !== undefined) {
-									existing.summary = (existing.summary || "") + detail.summary
-								}
-								if (detail.data !== undefined) {
-									existing.data = (existing.data || "") + detail.data
-								}
-								// Update other fields if provided
-								// Note: Don't update type - keep original type (e.g., reasoning.summary)
-								// even when encrypted data chunks arrive with type reasoning.encrypted
-								if (detail.id !== undefined) existing.id = detail.id
-								if (detail.format !== undefined) existing.format = detail.format
-								if (detail.signature !== undefined) existing.signature = detail.signature
-							} else {
-								// Start new reasoning detail accumulation
-								reasoningDetailsAccumulator.set(key, {
-									type: detail.type,
-									text: detail.text,
-									summary: detail.summary,
-									data: detail.data,
-									id: detail.id,
-									format: detail.format,
-									signature: detail.signature,
-									index,
-								})
-							}
-
-							// Yield text for display (still fragmented for live streaming)
-							// Only reasoning.text and reasoning.summary have displayable content
-							// reasoning.encrypted is intentionally skipped as it contains redacted content
-							let reasoningText: string | undefined
-							if (detail.type === "reasoning.text" && typeof detail.text === "string") {
-								reasoningText = detail.text
-							} else if (detail.type === "reasoning.summary" && typeof detail.summary === "string") {
-								reasoningText = detail.summary
-							}
-
-							if (reasoningText) {
-								hasYieldedReasoningFromDetails = true
-								yield { type: "reasoning", text: reasoningText }
-							}
-						}
-					}
-
-					// Handle top-level reasoning field for UI display.
-					// Skip if we've already yielded from reasoning_details to avoid duplicate display.
-					if ("reasoning" in delta && delta.reasoning && typeof delta.reasoning === "string") {
-						if (!hasYieldedReasoningFromDetails) {
-							yield { type: "reasoning", text: delta.reasoning }
-						}
-					} else if ("reasoning_content" in delta && typeof delta.reasoning_content === "string") {
-						// Also check for reasoning_content for backward compatibility
-						if (!hasYieldedReasoningFromDetails) {
-							yield { type: "reasoning", text: delta.reasoning_content }
-						}
-					}
-
-					// Emit raw tool call chunks - NativeToolCallParser handles state management
-					if ("tool_calls" in delta && Array.isArray(delta.tool_calls)) {
-						for (const toolCall of delta.tool_calls) {
-							yield {
-								type: "tool_call_partial",
-								index: toolCall.index,
-								id: toolCall.id,
-								name: toolCall.function?.name,
-								arguments: toolCall.function?.arguments,
-							}
-						}
-					}
-
-					if (delta.content) {
-						yield {
-							type: "text",
-							text: delta.content,
-						}
-					}
-				}
-
-				if (finishReason) {
-					const endEvents = NativeToolCallParser.processFinishReason(finishReason)
-					for (const event of endEvents) {
-						yield event
-					}
-				}
-
-				if (chunk.usage) {
-					lastUsage = chunk.usage as RooUsage
-				}
-			}
-
-			// After streaming completes, store ONLY the reasoning_details we received from the API.
-			if (reasoningDetailsAccumulator.size > 0) {
-				this.currentReasoningDetails = Array.from(reasoningDetailsAccumulator.values())
-			}
-
-			if (lastUsage) {
-				// Check if the current model is marked as free
-				const model = this.getModel()
-				const isFreeModel = model.info.isFree ?? false
-
-				// Normalize input tokens based on protocol expectations:
-				// - OpenAI protocol expects TOTAL input tokens (cached + non-cached)
-				// - Anthropic protocol expects NON-CACHED input tokens (caches passed separately)
-				const modelId = model.id
-				const apiProtocol = getApiProtocol("roo", modelId)
-
-				const promptTokens = lastUsage.prompt_tokens || 0
-				const cacheWrite = lastUsage.cache_creation_input_tokens || 0
-				const cacheRead = lastUsage.prompt_tokens_details?.cached_tokens || 0
-				const nonCached = Math.max(0, promptTokens - cacheWrite - cacheRead)
-
-				const inputTokensForDownstream = apiProtocol === "anthropic" ? nonCached : promptTokens
-
-				yield {
-					type: "usage",
-					inputTokens: inputTokensForDownstream,
-					outputTokens: lastUsage.completion_tokens || 0,
-					cacheWriteTokens: cacheWrite,
-					cacheReadTokens: cacheRead,
-					totalCost: isFreeModel ? 0 : (lastUsage.cost ?? 0),
-				}
-			}
-		} catch (error) {
-			const errorContext = {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				modelId: this.options.apiModelId,
-				hasTaskId: Boolean(metadata?.taskId),
-			}
-
-			console.error(`[RooHandler] Error during message streaming: ${JSON.stringify(errorContext)}`)
-
-			throw error
-		}
+		// Cloud features disabled — Moo Code provider is not available in this fork
+		throw new Error("Moo Code provider is not available in this fork. Cloud features have been disabled.")
 	}
+
 	override async completePrompt(prompt: string): Promise<string> {
-		// Update API key before making request to ensure we use the latest session token
-		this.client.apiKey = this.options.rooApiKey ?? getSessionToken()
-		return super.completePrompt(prompt)
+		throw new Error("Moo Code provider is not available in this fork. Cloud features have been disabled.")
 	}
 
 	private async loadDynamicModels(baseURL: string, apiKey?: string): Promise<void> {
@@ -387,7 +186,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 	}
 
 	/**
-	 * Generate an image using Roo Code Cloud's image generation API
+	 * Generate an image using Moo Code Cloud's image generation API
 	 * @param prompt The text prompt for image generation
 	 * @param model The model to use for generation
 	 * @param inputImage Optional base64 encoded input image data URL
@@ -400,36 +199,9 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		inputImage?: string,
 		apiMethod?: ImageGenerationApiMethod,
 	): Promise<ImageGenerationResult> {
-		const sessionToken = this.options.rooApiKey ?? getSessionToken()
-
-		if (!sessionToken || sessionToken === "unauthenticated") {
-			return {
-				success: false,
-				error: t("tools:generateImage.roo.authRequired"),
-			}
+		return {
+			success: false,
+			error: "Moo Code provider is not available in this fork. Cloud features have been disabled.",
 		}
-
-		const baseURL = `${this.fetcherBaseURL}/v1`
-
-		// Use the specified API method, defaulting to chat_completions for backward compatibility
-		if (apiMethod === "images_api") {
-			return generateImageWithImagesApi({
-				baseURL,
-				authToken: sessionToken,
-				model,
-				prompt,
-				inputImage,
-				outputFormat: "png",
-			})
-		}
-
-		// Default to chat completions approach
-		return generateImageWithProvider({
-			baseURL,
-			authToken: sessionToken,
-			model,
-			prompt,
-			inputImage,
-		})
 	}
 }

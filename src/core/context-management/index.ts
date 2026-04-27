@@ -4,10 +4,21 @@ import crypto from "crypto"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
-import { MAX_CONDENSE_THRESHOLD, MIN_CONDENSE_THRESHOLD, summarizeConversation, SummarizeResponse } from "../condense"
+import {
+	MAX_CONDENSE_THRESHOLD,
+	MIN_CONDENSE_THRESHOLD,
+	microcompactMessages,
+	summarizeConversation,
+	SummarizeResponse,
+	type MicrocompactConfig,
+	trySessionMemoryCompaction,
+	isSessionMemoryCompactEnabled,
+	type SessionMemoryCompactionResult,
+} from "../condense"
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { ANTHROPIC_DEFAULT_MAX_TOKENS } from "@roo-code/types"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
+import type { HookSystem } from "../hooks"
 
 /**
  * Context Management
@@ -147,6 +158,7 @@ export type WillManageContextOptions = {
 	profileThresholds: Record<string, number>
 	currentProfileId: string
 	lastMessageTokens: number
+	microCompactEnabled?: boolean
 }
 
 /**
@@ -167,7 +179,16 @@ export function willManageContext({
 	profileThresholds,
 	currentProfileId,
 	lastMessageTokens,
+	microCompactEnabled,
 }: WillManageContextOptions): boolean {
+	// Microcompact is always a possibility if enabled
+	if (microCompactEnabled !== false) {
+		// We can't accurately predict microcompact savings without the actual messages,
+		// but we can indicate that context management might run
+		// This is a conservative estimate - actual savings depend on message content
+		return true
+	}
+
 	if (!autoCondenseContext) {
 		// When auto-condense is disabled, only truncation can occur
 		const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
@@ -229,6 +250,20 @@ export type ContextManagementOptions = {
 	cwd?: string
 	/** Optional controller for file access validation */
 	rooIgnoreController?: RooIgnoreController
+	/** Optional microcompact configuration */
+	microCompactConfig?: Partial<MicrocompactConfig>
+	/** Optional session memory content for session memory compaction */
+	sessionMemory?: string
+	/** Whether session memory compaction is enabled */
+	sessionMemoryCompactEnabled?: boolean
+	/** The message ID up to which session memory has been summarized (avoids global state) */
+	lastSummarizedMessageId?: string
+	/** Optional hook system for executing pre/post compact hooks */
+	hookSystem?: HookSystem
+	/** Whether prompt-too-long retry is enabled */
+	promptTooLongRetryEnabled?: boolean
+	/** Maximum number of retry attempts when condensation hits prompt-too-long error */
+	promptTooLongMaxRetries?: number
 }
 
 export type ContextManagementResult = SummarizeResponse & {
@@ -236,6 +271,8 @@ export type ContextManagementResult = SummarizeResponse & {
 	truncationId?: string
 	messagesRemoved?: number
 	newContextTokensAfterTruncation?: number
+	/** Indicates if session memory compaction was used */
+	sessionMemoryCompactionUsed?: boolean
 }
 
 /**
@@ -262,6 +299,13 @@ export async function manageContext({
 	filesReadByRoo,
 	cwd,
 	rooIgnoreController,
+	microCompactConfig,
+	sessionMemory,
+	sessionMemoryCompactEnabled,
+	lastSummarizedMessageId,
+	hookSystem,
+	promptTooLongRetryEnabled,
+	promptTooLongMaxRetries,
 }: ContextManagementOptions): Promise<ContextManagementResult> {
 	let error: string | undefined
 	let errorDetails: string | undefined
@@ -282,6 +326,39 @@ export async function manageContext({
 	// Calculate available tokens for conversation history
 	// Truncate if we're within TOKEN_BUFFER_PERCENTAGE of the context window
 	const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - reservedTokens
+
+	// Step 1: Run microcompact as a pre-step to save tokens before full condensation
+	let workingMessages = messages
+	let microcompactTokensSaved = 0
+	if (microCompactConfig?.enabled !== false) {
+		const microcompactResult = microcompactMessages(messages, microCompactConfig)
+		workingMessages = microcompactResult.messages
+		microcompactTokensSaved = microcompactResult.tokensSaved
+
+		if (microcompactTokensSaved > 0) {
+			console.log(
+				`[Context Management] Microcompact saved ${microcompactTokensSaved} tokens (${microcompactResult.toolsCleared} tools cleared, ${microcompactResult.toolsKept} kept)`,
+			)
+		}
+	}
+
+	// Recalculate tokens after microcompact (only if we actually saved tokens)
+	let adjustedTotalTokens = totalTokens
+	if (microcompactTokensSaved > 0) {
+		// Estimate tokens for all messages except the last one
+		adjustedTotalTokens = 0
+		for (const msg of workingMessages.slice(0, -1)) {
+			const content = msg.content
+			if (Array.isArray(content)) {
+				adjustedTotalTokens += await estimateTokenCount(content, apiHandler)
+			} else if (typeof content === "string") {
+				adjustedTotalTokens += await estimateTokenCount([{ type: "text", text: content }], apiHandler)
+			}
+		}
+	}
+
+	// Calculate new context tokens after microcompact
+	const adjustedPrevContextTokens = adjustedTotalTokens + lastMessageTokens
 
 	// Determine the effective threshold to use
 	let effectiveThreshold = autoCondenseContextPercent
@@ -304,11 +381,37 @@ export async function manageContext({
 	// If no specific threshold is found for the profile, fall back to global setting
 
 	if (autoCondenseContext) {
-		const contextPercent = (100 * prevContextTokens) / contextWindow
-		if (contextPercent >= effectiveThreshold || prevContextTokens > allowedTokens) {
-			// Attempt to intelligently condense the context
+		const contextPercent = (100 * adjustedPrevContextTokens) / contextWindow
+		if (contextPercent >= effectiveThreshold || adjustedPrevContextTokens > allowedTokens) {
+			// First, try session memory compaction if enabled and session memory is available
+			if (sessionMemoryCompactEnabled !== false && sessionMemory && isSessionMemoryCompactEnabled()) {
+				console.log("[Context Management] Attempting session memory compaction...")
+				const smResult = await trySessionMemoryCompaction(
+					workingMessages,
+					sessionMemory,
+					apiHandler,
+					taskId,
+					undefined, // No autoCompactThreshold for now
+					lastSummarizedMessageId,
+				)
+
+				if (smResult) {
+					console.log("[Context Management] Session memory compaction succeeded")
+					return {
+						...smResult,
+						prevContextTokens: adjustedPrevContextTokens,
+						sessionMemoryCompactionUsed: true,
+					}
+				} else {
+					console.log(
+						"[Context Management] Session memory compaction failed, falling back to regular condensation",
+					)
+				}
+			}
+
+			// Fall back to regular condensation
 			const result = await summarizeConversation({
-				messages,
+				messages: workingMessages,
 				apiHandler,
 				systemPrompt,
 				taskId,
@@ -319,20 +422,23 @@ export async function manageContext({
 				filesReadByRoo,
 				cwd,
 				rooIgnoreController,
+				hookSystem,
+				promptTooLongRetryEnabled,
+				promptTooLongMaxRetries,
 			})
 			if (result.error) {
 				error = result.error
 				errorDetails = result.errorDetails
 				cost = result.cost
 			} else {
-				return { ...result, prevContextTokens }
+				return { ...result, prevContextTokens: adjustedPrevContextTokens, sessionMemoryCompactionUsed: false }
 			}
 		}
 	}
 
 	// Fall back to sliding window truncation if needed
-	if (prevContextTokens > allowedTokens) {
-		const truncationResult = truncateConversation(messages, 0.5, taskId)
+	if (adjustedPrevContextTokens > allowedTokens) {
+		const truncationResult = truncateConversation(workingMessages, 0.5, taskId)
 
 		// Calculate new context tokens after truncation by counting non-truncated messages
 		// Messages with truncationParent are hidden, so we count only those without it
@@ -361,7 +467,7 @@ export async function manageContext({
 
 		return {
 			messages: truncationResult.messages,
-			prevContextTokens,
+			prevContextTokens: adjustedPrevContextTokens,
 			summary: "",
 			cost,
 			error,
@@ -372,5 +478,12 @@ export async function manageContext({
 		}
 	}
 	// No truncation or condensation needed
-	return { messages, summary: "", cost, prevContextTokens, error, errorDetails }
+	return {
+		messages: workingMessages,
+		summary: "",
+		cost,
+		prevContextTokens: adjustedPrevContextTokens,
+		error,
+		errorDetails,
+	}
 }

@@ -1,38 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { MockedFunction } from "vitest"
-import * as vscode from "vscode"
 
 import type { SettingsService, AuthService } from "@roo-code/types"
 
 import { CloudAPI } from "../CloudAPI.js"
 import { CloudShareService } from "../CloudShareService.js"
-import { CloudAPIError, TaskNotFoundError } from "../errors.js"
-
-const mockFetch = vi.fn()
-global.fetch = mockFetch as any
-
-vi.mock("vscode", () => ({
-	window: {
-		showInformationMessage: vi.fn(),
-		showErrorMessage: vi.fn(),
-		showQuickPick: vi.fn(),
-	},
-	env: {
-		clipboard: {
-			writeText: vi.fn(),
-		},
-		openExternal: vi.fn(),
-	},
-	Uri: {
-		parse: vi.fn(),
-	},
-	extensions: {
-		getExtension: vi.fn(() => ({
-			packageJSON: { version: "1.0.0" },
-		})),
-	},
-}))
 
 vi.mock("../Config", () => ({
 	getRooCodeApiUrl: () => "https://app.roocode.com",
@@ -51,7 +24,6 @@ describe("CloudShareService", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		mockFetch.mockClear()
 
 		mockLog = vi.fn()
 		mockAuthService = {
@@ -70,249 +42,63 @@ describe("CloudShareService", () => {
 	})
 
 	describe("shareTask", () => {
-		it("should share task with organization visibility and copy to clipboard", async () => {
-			const mockResponseData = {
-				success: true,
-				shareUrl: "https://app.roocode.com/share/abc123",
-			}
-
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-
-			mockFetch.mockResolvedValue({
-				ok: true,
-				json: vi.fn().mockResolvedValue(mockResponseData),
-			})
-
-			const result = await shareService.shareTask("task-123", "organization")
-
-			expect(result.success).toBe(true)
-			expect(result.shareUrl).toBe("https://app.roocode.com/share/abc123")
-
-			expect(mockFetch).toHaveBeenCalledWith("https://app.roocode.com/api/extension/share", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: "Bearer session-token",
-					"User-Agent": "Roo-Code 1.0.0",
-				},
-				body: JSON.stringify({
-					taskId: "task-123",
-					visibility: "organization",
-				}),
-				signal: expect.any(AbortSignal),
-			})
-
-			expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith("https://app.roocode.com/share/abc123")
-		})
-
-		it("should share task with public visibility", async () => {
-			const mockResponseData = {
-				success: true,
-				shareUrl: "https://app.roocode.com/share/abc123",
-			}
-
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-
-			mockFetch.mockResolvedValue({
-				ok: true,
-				json: vi.fn().mockResolvedValue(mockResponseData),
-			})
-
-			const result = await shareService.shareTask("task-123", "public")
-
-			expect(result.success).toBe(true)
-
-			expect(mockFetch).toHaveBeenCalledWith("https://app.roocode.com/api/extension/share", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: "Bearer session-token",
-					"User-Agent": "Roo-Code 1.0.0",
-				},
-				body: JSON.stringify({ taskId: "task-123", visibility: "public" }),
-				signal: expect.any(AbortSignal),
-			})
-		})
-
-		it("should default to organization visibility when not specified", async () => {
-			const mockResponseData = {
-				success: true,
-				shareUrl: "https://app.roocode.com/share/abc123",
-			}
-
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-			mockFetch.mockResolvedValue({
-				ok: true,
-				json: vi.fn().mockResolvedValue(mockResponseData),
-			})
-
-			const result = await shareService.shareTask("task-123")
-
-			expect(result.success).toBe(true)
-			expect(mockFetch).toHaveBeenCalledWith("https://app.roocode.com/api/extension/share", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: "Bearer session-token",
-					"User-Agent": "Roo-Code 1.0.0",
-				},
-				body: JSON.stringify({
-					taskId: "task-123",
-					visibility: "organization",
-				}),
-				signal: expect.any(AbortSignal),
-			})
-		})
-
-		it("should handle API error response", async () => {
-			const mockResponseData = {
-				success: false,
-				error: "Task not found",
-			}
-
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-			mockFetch.mockResolvedValue({
-				ok: true,
-				json: vi.fn().mockResolvedValue(mockResponseData),
-			})
-
-			const result = await shareService.shareTask("task-123", "organization")
-
-			expect(result.success).toBe(false)
-			expect(result.error).toBe("Task not found")
-		})
-
-		it("should handle authentication errors", async () => {
-			;(mockAuthService.getSessionToken as any).mockReturnValue(null)
-
-			await expect(shareService.shareTask("task-123", "organization")).rejects.toThrow("Authentication required")
-		})
-
-		it("should handle unexpected errors", async () => {
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-			mockFetch.mockRejectedValue(new Error("Network error"))
-
-			await expect(shareService.shareTask("task-123", "organization")).rejects.toThrow("Network error")
-		})
-
-		it("should throw TaskNotFoundError for 404 responses", async () => {
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-			mockFetch.mockResolvedValue({
-				ok: false,
-				status: 404,
-				statusText: "Not Found",
-				json: vi.fn().mockRejectedValue(new Error("Invalid JSON")),
-				text: vi.fn().mockResolvedValue("Not Found"),
-			})
-
-			await expect(shareService.shareTask("task-123", "organization")).rejects.toThrow(TaskNotFoundError)
-			await expect(shareService.shareTask("task-123", "organization")).rejects.toThrow("Task not found")
-		})
-
-		it("should throw generic Error for non-404 HTTP errors", async () => {
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-			mockFetch.mockResolvedValue({
-				ok: false,
-				status: 500,
-				statusText: "Internal Server Error",
-				json: vi.fn().mockRejectedValue(new Error("Invalid JSON")),
-				text: vi.fn().mockResolvedValue("Internal Server Error"),
-			})
-
-			await expect(shareService.shareTask("task-123", "organization")).rejects.toThrow(CloudAPIError)
+		it("should throw error when cloud features are disabled", async () => {
 			await expect(shareService.shareTask("task-123", "organization")).rejects.toThrow(
-				"HTTP 500: Internal Server Error",
+				"Cloud features are disabled in this fork",
 			)
 		})
 
-		it("should create TaskNotFoundError with correct properties", async () => {
-			;(mockAuthService.getSessionToken as any).mockReturnValue("session-token")
-			mockFetch.mockResolvedValue({
-				ok: false,
-				status: 404,
-				statusText: "Not Found",
-				json: vi.fn().mockRejectedValue(new Error("Invalid JSON")),
-				text: vi.fn().mockResolvedValue("Not Found"),
-			})
+		it("should throw error for public visibility", async () => {
+			await expect(shareService.shareTask("task-123", "public")).rejects.toThrow(
+				"Cloud features are disabled in this fork",
+			)
+		})
+
+		it("should throw error with default visibility", async () => {
+			await expect(shareService.shareTask("task-123")).rejects.toThrow("Cloud features are disabled in this fork")
+		})
+
+		it("should not make any fetch calls", async () => {
+			const mockFetch = vi.fn()
+			global.fetch = mockFetch as any
 
 			try {
 				await shareService.shareTask("task-123", "organization")
-				expect.fail("Expected TaskNotFoundError to be thrown")
-			} catch (error) {
-				expect(error).toBeInstanceOf(TaskNotFoundError)
-				expect(error).toBeInstanceOf(Error)
-				expect((error as TaskNotFoundError).message).toBe("Task not found")
+			} catch {
+				// Expected to throw
 			}
+
+			expect(mockFetch).not.toHaveBeenCalled()
 		})
 	})
 
 	describe("canShareTask", () => {
-		it("should return true when authenticated and sharing is enabled", async () => {
+		it("should return false when cloud features are disabled", async () => {
+			const result = await shareService.canShareTask()
+			expect(result).toBe(false)
+		})
+
+		it("should return false regardless of authentication state", async () => {
 			;(mockAuthService.isAuthenticated as any).mockReturnValue(true)
+			const result = await shareService.canShareTask()
+			expect(result).toBe(false)
+		})
+
+		it("should return false regardless of settings", async () => {
 			;(mockSettingsService.getSettings as any).mockReturnValue({
 				cloudSettings: {
 					enableTaskSharing: true,
 				},
 			})
-
 			const result = await shareService.canShareTask()
-
-			expect(result).toBe(true)
-		})
-
-		it("should return false when authenticated but sharing is disabled", async () => {
-			;(mockAuthService.isAuthenticated as any).mockReturnValue(true)
-			;(mockSettingsService.getSettings as any).mockReturnValue({
-				cloudSettings: {
-					enableTaskSharing: false,
-				},
-			})
-
-			const result = await shareService.canShareTask()
-
 			expect(result).toBe(false)
 		})
+	})
 
-		it("should return false when authenticated and sharing setting is undefined (default)", async () => {
-			;(mockAuthService.isAuthenticated as any).mockReturnValue(true)
-			;(mockSettingsService.getSettings as any).mockReturnValue({
-				cloudSettings: {},
-			})
-
-			const result = await shareService.canShareTask()
-
+	describe("canSharePublicly", () => {
+		it("should return false when cloud features are disabled", async () => {
+			const result = await shareService.canSharePublicly()
 			expect(result).toBe(false)
-		})
-
-		it("should return false when authenticated and no settings available (default)", async () => {
-			;(mockAuthService.isAuthenticated as any).mockReturnValue(true)
-			;(mockSettingsService.getSettings as any).mockReturnValue(undefined)
-
-			const result = await shareService.canShareTask()
-
-			expect(result).toBe(false)
-		})
-
-		it("should return false when settings service returns undefined", async () => {
-			;(mockSettingsService.getSettings as any).mockReturnValue(undefined)
-
-			const result = await shareService.canShareTask()
-
-			expect(result).toBe(false)
-		})
-
-		it("should handle errors gracefully", async () => {
-			;(mockSettingsService.getSettings as any).mockImplementation(() => {
-				throw new Error("Settings error")
-			})
-
-			const result = await shareService.canShareTask()
-
-			expect(result).toBe(false)
-			expect(mockLog).toHaveBeenCalledWith(
-				"[ShareService] Error checking if task can be shared:",
-				expect.any(Error),
-			)
 		})
 	})
 })

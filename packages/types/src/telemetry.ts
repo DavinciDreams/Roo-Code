@@ -74,6 +74,13 @@ export enum TelemetryEventName {
 	TELEMETRY_SETTINGS_CHANGED = "Telemetry Settings Changed",
 	MODEL_CACHE_EMPTY_RESPONSE = "Model Cache Empty Response",
 	READ_FILE_LEGACY_FORMAT_USED = "Read File Legacy Format Used",
+
+	WORKTREE_CREATED = "Worktree Created",
+	WORKTREE_DELETED = "Worktree Deleted",
+	WORKTREE_ORPHAN_DETECTED = "Worktree Orphan Detected",
+	PARALLEL_TASK_SPAWNED = "Parallel Task Spawned",
+	PARALLEL_TASK_COMPLETED = "Parallel Task Completed",
+	PARALLEL_TASK_CHILD_FAILED = "Parallel Task Child Failed",
 }
 
 /**

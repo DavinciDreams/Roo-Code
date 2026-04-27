@@ -32,132 +32,54 @@ describe("CloudSettingsService - Response Parsing", () => {
 		service = new CloudSettingsService(mockContext, mockAuthService, vi.fn())
 	})
 
-	it("should successfully parse valid extension settings response", async () => {
-		// Mock fetch response with a valid settings structure
-		const mockResponse = {
-			organization: {
-				version: 1,
-				defaultSettings: {},
-				allowList: {
-					allowAll: true,
-					providers: {},
-				},
-			},
-			user: {
-				features: {},
-				settings: {},
-				version: 1,
-			},
-		}
+	afterEach(() => {
+		service.dispose()
+	})
 
-		global.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			json: vi.fn().mockResolvedValue(mockResponse),
-		})
-
-		// Initialize the service
+	it("should return undefined settings when cloud features are disabled", async () => {
 		await service.initialize()
 
-		// Wait for the fetch to be called (timer executes immediately but asynchronously)
-		await vi.waitFor(() => {
-			expect(global.fetch).toHaveBeenCalled()
-		})
-
-		// Wait a bit for the async processing to complete
-		await new Promise((resolve) => setTimeout(resolve, 10))
-
-		// Verify settings were parsed correctly
 		const orgSettings = service.getSettings()
 		const userSettings = service.getUserSettings()
 
-		expect(orgSettings).toEqual(mockResponse.organization)
-		expect(userSettings).toEqual(mockResponse.user)
+		expect(orgSettings).toBeUndefined()
+		expect(userSettings).toBeUndefined()
 	})
 
-	it("should handle complex nested provider settings without type errors", async () => {
-		// Mock response with complex nested provider settings
-		const mockResponse = {
-			organization: {
-				version: 2,
-				defaultSettings: {
-					maxOpenTabsContext: 10,
-				},
-				allowList: {
-					allowAll: false,
-					providers: {
-						anthropic: {
-							allowAll: true,
-						},
-						openai: {
-							allowAll: false,
-							models: ["gpt-4", "gpt-3.5-turbo"],
-						},
-					},
-				},
-				providerProfiles: {
-					default: {
-						id: "default",
-						apiProvider: "anthropic",
-						apiModelId: "claude-3-opus-20240229",
-						apiKey: "test-key",
-						modelTemperature: 0.7,
-					},
-				},
-			},
-			user: {
-				features: {},
-				settings: {},
-				version: 1,
-			},
-		}
+	it("should not make fetch calls when cloud features are disabled", async () => {
+		const mockFetch = vi.fn()
+		global.fetch = mockFetch
 
-		global.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			json: vi.fn().mockResolvedValue(mockResponse),
-		})
-
-		// Initialize the service
 		await service.initialize()
 
-		// Wait for the fetch to be called (timer executes immediately but asynchronously)
-		await vi.waitFor(() => {
-			expect(global.fetch).toHaveBeenCalled()
-		})
+		// Wait a bit to ensure no async fetch calls are made
+		await new Promise((resolve) => setTimeout(resolve, 50))
 
-		// Wait a bit for the async processing to complete
-		await new Promise((resolve) => setTimeout(resolve, 10))
-
-		// Verify complex settings were parsed correctly
-		const orgSettings = service.getSettings()
-		const userSettings = service.getUserSettings()
-
-		expect(orgSettings).toEqual(mockResponse.organization)
-		expect(userSettings).toEqual(mockResponse.user)
-		expect(orgSettings?.providerProfiles?.default).toBeDefined()
+		expect(mockFetch).not.toHaveBeenCalled()
 	})
 
-	it("should handle invalid response gracefully", async () => {
-		// Mock invalid response
-		const mockResponse = {
-			organization: {
-				// Missing required fields
-				version: 1,
-			},
-			user: {
-				// Missing required fields
-				version: 1,
-			},
-		}
-
+	it("should return undefined settings regardless of response data", async () => {
+		// Even if fetch is mocked with valid data, settings should be undefined
 		global.fetch = vi.fn().mockResolvedValue({
 			ok: true,
-			json: vi.fn().mockResolvedValue(mockResponse),
+			json: vi.fn().mockResolvedValue({
+				organization: {
+					version: 1,
+					defaultSettings: {},
+					allowList: { allowAll: true, providers: {} },
+				},
+				user: {
+					features: {},
+					settings: {},
+					version: 1,
+				},
+			}),
 		})
 
-		// Initialize the service
 		await service.initialize()
 
-		// Settings should remain undefined due to validation failure
+		await new Promise((resolve) => setTimeout(resolve, 50))
+
 		const orgSettings = service.getSettings()
 		const userSettings = service.getUserSettings()
 

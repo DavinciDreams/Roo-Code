@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { CloudAPI } from "../CloudAPI.js"
-import { AuthenticationError, CloudAPIError } from "../errors.js"
+import { CloudAPIError } from "../errors.js"
 import type { AuthService } from "@roo-code/types"
 
 // Mock the config module
@@ -15,7 +15,7 @@ vi.mock("../utils.js", () => ({
 
 describe("CloudAPI.creditBalance", () => {
 	let mockAuthService: {
-		getSessionToken: Mock<() => string | undefined>
+		getSessionToken: ReturnType<typeof vi.fn>
 	}
 	let cloudAPI: CloudAPI
 
@@ -29,68 +29,37 @@ describe("CloudAPI.creditBalance", () => {
 		global.fetch = vi.fn()
 	})
 
-	it("should fetch credit balance successfully", async () => {
-		const mockBalance = 12.34
-		mockAuthService.getSessionToken.mockReturnValue("test-session-token")
-
-		global.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			json: async () => ({ balance: mockBalance }),
-		})
-
-		const balance = await cloudAPI.creditBalance()
-
-		expect(balance).toBe(mockBalance)
-		expect(global.fetch).toHaveBeenCalledWith(
-			"https://api.test.com/api/extension/credit-balance",
-			expect.objectContaining({
-				method: "GET",
-				headers: expect.objectContaining({
-					Authorization: "Bearer test-session-token",
-					"Content-Type": "application/json",
-					"User-Agent": "test-user-agent",
-				}),
-			}),
-		)
+	it("should throw CloudAPIError when cloud features are disabled", async () => {
+		await expect(cloudAPI.creditBalance()).rejects.toThrow(CloudAPIError)
+		await expect(cloudAPI.creditBalance()).rejects.toThrow("Cloud features are disabled in this fork")
 	})
 
-	it("should throw AuthenticationError when session token is missing", async () => {
-		mockAuthService.getSessionToken.mockReturnValue(undefined)
-
-		await expect(cloudAPI.creditBalance()).rejects.toThrow(AuthenticationError)
-	})
-
-	it("should handle API errors", async () => {
+	it("should throw CloudAPIError regardless of session token", async () => {
 		mockAuthService.getSessionToken.mockReturnValue("test-session-token")
-
-		global.fetch = vi.fn().mockResolvedValue({
-			ok: false,
-			status: 500,
-			statusText: "Internal Server Error",
-			json: async () => ({ error: "Server error" }),
-		})
-
 		await expect(cloudAPI.creditBalance()).rejects.toThrow(CloudAPIError)
 	})
 
-	it("should handle network errors", async () => {
-		mockAuthService.getSessionToken.mockReturnValue("test-session-token")
+	it("should not make any fetch calls", async () => {
+		const fetchSpy = vi.fn()
+		global.fetch = fetchSpy
 
-		global.fetch = vi.fn().mockRejectedValue(new TypeError("fetch failed"))
+		try {
+			await cloudAPI.creditBalance()
+		} catch {
+			// Expected to throw
+		}
 
-		await expect(cloudAPI.creditBalance()).rejects.toThrow(
-			"Network error while calling /api/extension/credit-balance",
-		)
+		expect(fetchSpy).not.toHaveBeenCalled()
 	})
 
-	it("should handle invalid response format", async () => {
+	it("should throw CloudAPIError when session token is missing", async () => {
+		mockAuthService.getSessionToken.mockReturnValue(undefined)
+		await expect(cloudAPI.creditBalance()).rejects.toThrow(CloudAPIError)
+	})
+
+	it("should throw CloudAPIError on network errors", async () => {
 		mockAuthService.getSessionToken.mockReturnValue("test-session-token")
-
-		global.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			json: async () => ({ invalid: "response" }),
-		})
-
-		await expect(cloudAPI.creditBalance()).rejects.toThrow()
+		global.fetch = vi.fn().mockRejectedValue(new TypeError("fetch failed"))
+		await expect(cloudAPI.creditBalance()).rejects.toThrow(CloudAPIError)
 	})
 })

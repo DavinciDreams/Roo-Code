@@ -592,7 +592,10 @@ export class McpHub {
 
 	// Get project-level MCP configuration path
 	private async getProjectMcpPath(): Promise<string | null> {
-		const workspacePath = this.providerRef.deref()?.cwd ?? getWorkspacePath()
+		const provider = this.providerRef.deref()
+		// For worktree tasks, prefer the current task's workspacePath so each worktree
+		// can have its own .roo/mcp.json with branch-specific server definitions.
+		const workspacePath = provider?.getCurrentTask?.()?.workspacePath ?? provider?.cwd ?? getWorkspacePath()
 		const projectMcpDir = path.join(workspacePath, ".roo")
 		const projectMcpPath = path.join(projectMcpDir, "mcp.json")
 
@@ -687,7 +690,7 @@ export class McpHub {
 		try {
 			const client = new Client(
 				{
-					name: "Roo Code",
+					name: "Moo Code",
 					version: this.providerRef.deref()?.context.extension?.packageJSON?.version ?? "1.0.0",
 				},
 				{

@@ -84,9 +84,7 @@ describe("TelemetryClient", () => {
 			expect(isEventCapturable(TelemetryEventName.TASK_CONVERSATION_MESSAGE)).toBe(false)
 		})
 
-		it("should return true for TASK_MESSAGE events when isTaskSyncEnabled returns true", () => {
-			mockSettingsService.isTaskSyncEnabled.mockReturnValue(true)
-
+		it("should return true for TASK_MESSAGE events (not in exclude list)", () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
 			const isEventCapturable = getPrivateProperty<(eventName: TelemetryEventName) => boolean>(
@@ -94,22 +92,8 @@ describe("TelemetryClient", () => {
 				"isEventCapturable",
 			).bind(client)
 
+			// TASK_MESSAGE is not in the exclude list, so base class returns true
 			expect(isEventCapturable(TelemetryEventName.TASK_MESSAGE)).toBe(true)
-			expect(mockSettingsService.isTaskSyncEnabled).toHaveBeenCalled()
-		})
-
-		it("should return false for TASK_MESSAGE events when isTaskSyncEnabled returns false", () => {
-			mockSettingsService.isTaskSyncEnabled.mockReturnValue(false)
-
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			const isEventCapturable = getPrivateProperty<(eventName: TelemetryEventName) => boolean>(
-				client,
-				"isEventCapturable",
-			).bind(client)
-
-			expect(isEventCapturable(TelemetryEventName.TASK_MESSAGE)).toBe(false)
-			expect(mockSettingsService.isTaskSyncEnabled).toHaveBeenCalled()
 		})
 	})
 
@@ -198,65 +182,7 @@ describe("TelemetryClient", () => {
 	})
 
 	describe("capture", () => {
-		it("should not capture events that are not capturable", async () => {
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			await client.capture({
-				event: TelemetryEventName.TASK_CONVERSATION_MESSAGE, // In exclude list.
-				properties: { test: "value" },
-			})
-
-			expect(mockFetch).not.toHaveBeenCalled()
-		})
-
-		it("should not capture TASK_MESSAGE events when recordTaskMessages is false", async () => {
-			mockSettingsService.getSettings.mockReturnValue({
-				cloudSettings: {
-					recordTaskMessages: false,
-				},
-			})
-
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			await client.capture({
-				event: TelemetryEventName.TASK_MESSAGE,
-				properties: {
-					taskId: "test-task-id",
-					message: {
-						ts: 1,
-						type: "say",
-						say: "text",
-						text: "test message",
-					},
-				},
-			})
-
-			expect(mockFetch).not.toHaveBeenCalled()
-		})
-
-		it("should not capture TASK_MESSAGE events when isTaskSyncEnabled returns false", async () => {
-			mockSettingsService.isTaskSyncEnabled.mockReturnValue(false)
-
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			await client.capture({
-				event: TelemetryEventName.TASK_MESSAGE,
-				properties: {
-					taskId: "test-task-id",
-					message: {
-						ts: 1,
-						type: "say",
-						say: "text",
-						text: "test message",
-					},
-				},
-			})
-
-			expect(mockFetch).not.toHaveBeenCalled()
-			expect(mockSettingsService.isTaskSyncEnabled).toHaveBeenCalled()
-		})
-
-		it("should not send request when schema validation fails", async () => {
+		it("should not send any requests (cloud features disabled)", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
 			await client.capture({
@@ -265,126 +191,50 @@ describe("TelemetryClient", () => {
 			})
 
 			expect(mockFetch).not.toHaveBeenCalled()
-			expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Invalid telemetry event"))
 		})
 
-		it("should send request when event is capturable and validation passes", async () => {
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			const providerProperties = {
-				appName: "roo-code",
-				appVersion: "1.0.0",
-				vscodeVersion: "1.60.0",
-				platform: "darwin",
-				editorName: "vscode",
-				language: "en",
-				mode: "code",
-			}
-
-			const eventProperties = {
-				taskId: "test-task-id",
-			}
-
-			const mockValidatedData = {
-				type: TelemetryEventName.TASK_CREATED,
-				properties: {
-					...providerProperties,
-					taskId: "test-task-id",
-				},
-			}
-
-			const mockProvider: TelemetryPropertiesProvider = {
-				getTelemetryProperties: vi.fn().mockResolvedValue(providerProperties),
-			}
-
-			client.setProvider(mockProvider)
-
-			await client.capture({
-				event: TelemetryEventName.TASK_CREATED,
-				properties: eventProperties,
-			})
-
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://app.roocode.com/api/events",
-				expect.objectContaining({
-					method: "POST",
-					body: JSON.stringify(mockValidatedData),
-				}),
-			)
-		})
-
-		it("should attempt to capture TASK_MESSAGE events when isTaskSyncEnabled returns true", async () => {
-			mockSettingsService.isTaskSyncEnabled.mockReturnValue(true)
-
-			const eventProperties = {
-				appName: "roo-code",
-				appVersion: "1.0.0",
-				vscodeVersion: "1.60.0",
-				platform: "darwin",
-				editorName: "vscode",
-				language: "en",
-				mode: "code",
-				taskId: "test-task-id",
-				message: {
-					ts: 1,
-					type: "say",
-					say: "text",
-					text: "test message",
-				},
-			}
-
-			const mockValidatedData = {
-				type: TelemetryEventName.TASK_MESSAGE,
-				properties: eventProperties,
-			}
-
+		it("should not send requests for TASK_MESSAGE events", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
 			await client.capture({
 				event: TelemetryEventName.TASK_MESSAGE,
-				properties: eventProperties,
+				properties: {
+					taskId: "test-task-id",
+					message: { ts: 1, type: "say", say: "text", text: "test message" },
+				},
 			})
 
-			expect(mockSettingsService.isTaskSyncEnabled).toHaveBeenCalled()
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://app.roocode.com/api/events",
-				expect.objectContaining({
-					method: "POST",
-					body: JSON.stringify(mockValidatedData),
-				}),
-			)
+			expect(mockFetch).not.toHaveBeenCalled()
 		})
 
-		it("should handle fetch errors gracefully", async () => {
+		it("should not send requests for TASK_CONVERSATION_MESSAGE events", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
-			mockFetch.mockRejectedValue(new Error("Network error"))
+			await client.capture({
+				event: TelemetryEventName.TASK_CONVERSATION_MESSAGE,
+				properties: { test: "value" },
+			})
 
-			await expect(
-				client.capture({
-					event: TelemetryEventName.TASK_CREATED,
-					properties: { test: "value" },
-				}),
-			).resolves.not.toThrow()
+			expect(mockFetch).not.toHaveBeenCalled()
 		})
 	})
 
 	describe("telemetry state methods", () => {
-		it("should always return true for isTelemetryEnabled", () => {
+		it("should always return false for isTelemetryEnabled", () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-			expect(client.isTelemetryEnabled()).toBe(true)
+			expect(client.isTelemetryEnabled()).toBe(false)
 		})
 
 		it("should have empty implementations for updateTelemetryState and shutdown", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 			client.updateTelemetryState(true)
 			await client.shutdown()
+			// Should not throw
 		})
 	})
 
 	describe("backfillMessages", () => {
-		it("should not send request when not authenticated", async () => {
-			mockAuthService.isAuthenticated.mockReturnValue(false)
+		it("should not send any requests (cloud features disabled)", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
 			const messages = [
@@ -401,8 +251,7 @@ describe("TelemetryClient", () => {
 			expect(mockFetch).not.toHaveBeenCalled()
 		})
 
-		it("should not send request when no session token available", async () => {
-			mockAuthService.getSessionToken.mockReturnValue(null)
+		it("should not send request even when authenticated", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
 			const messages = [
@@ -417,87 +266,15 @@ describe("TelemetryClient", () => {
 			await client.backfillMessages(messages, "test-task-id")
 
 			expect(mockFetch).not.toHaveBeenCalled()
-			expect(console.error).toHaveBeenCalledWith(
-				"[TelemetryClient#backfillMessages] Unauthorized: No session token available.",
-			)
 		})
 
-		it("should send FormData request with correct structure when authenticated", async () => {
+		it("should not send request even with provider set", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
-			const providerProperties = {
-				appName: "roo-code",
-				appVersion: "1.0.0",
-				vscodeVersion: "1.60.0",
-				platform: "darwin",
-				editorName: "vscode",
-				language: "en",
-				mode: "code",
-			}
-
 			const mockProvider: TelemetryPropertiesProvider = {
-				getTelemetryProperties: vi.fn().mockResolvedValue(providerProperties),
-			}
-
-			client.setProvider(mockProvider)
-
-			const messages = [
-				{
-					ts: 1,
-					type: "say" as const,
-					say: "text" as const,
-					text: "test message 1",
-				},
-				{
-					ts: 2,
-					type: "ask" as const,
-					ask: "followup" as const,
-					text: "test question",
-				},
-			]
-
-			await client.backfillMessages(messages, "test-task-id")
-
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://app.roocode.com/api/events/backfill",
-				expect.objectContaining({
-					method: "POST",
-					headers: {
-						Authorization: "Bearer mock-token",
-					},
-					body: expect.any(FormData),
+				getTelemetryProperties: vi.fn().mockResolvedValue({
+					appVersion: "1.0.0",
 				}),
-			)
-
-			// Verify FormData contents
-			const call = mockFetch.mock.calls[0]
-			const formData = call?.[1]?.body as FormData
-
-			expect(formData.get("taskId")).toBe("test-task-id")
-
-			// Parse and compare properties as objects since JSON.stringify order can vary
-			const propertiesJson = formData.get("properties") as string
-			const parsedProperties = JSON.parse(propertiesJson)
-			expect(parsedProperties).toEqual({
-				taskId: "test-task-id",
-				...providerProperties,
-			})
-			// The messages are stored as a File object under the "file" key
-			const fileField = formData.get("file") as File
-			expect(fileField).toBeInstanceOf(File)
-			expect(fileField.name).toBe("task.json")
-			expect(fileField.type).toBe("application/json")
-
-			// Read the file content to verify the messages
-			const fileContent = await fileField.text()
-			expect(fileContent).toBe(JSON.stringify(messages))
-		})
-
-		it("should handle provider errors gracefully", async () => {
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			const mockProvider: TelemetryPropertiesProvider = {
-				getTelemetryProperties: vi.fn().mockRejectedValue(new Error("Provider error")),
 			}
 
 			client.setProvider(mockProvider)
@@ -513,163 +290,15 @@ describe("TelemetryClient", () => {
 
 			await client.backfillMessages(messages, "test-task-id")
 
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://app.roocode.com/api/events/backfill",
-				expect.objectContaining({
-					method: "POST",
-					headers: {
-						Authorization: "Bearer mock-token",
-					},
-					body: expect.any(FormData),
-				}),
-			)
-
-			// Verify FormData contents - should still work with just taskId
-			const call = mockFetch.mock.calls[0]
-			const formData = call?.[1]?.body as FormData
-
-			expect(formData.get("taskId")).toBe("test-task-id")
-			expect(formData.get("properties")).toBe(
-				JSON.stringify({
-					taskId: "test-task-id",
-				}),
-			)
-
-			// The messages are stored as a File object under the "file" key
-			const fileField = formData.get("file") as File
-			expect(fileField).toBeInstanceOf(File)
-			expect(fileField.name).toBe("task.json")
-			expect(fileField.type).toBe("application/json")
-
-			// Read the file content to verify the messages
-			const fileContent = await fileField.text()
-			expect(fileContent).toBe(JSON.stringify(messages))
+			expect(mockFetch).not.toHaveBeenCalled()
 		})
 
-		it("should work without provider set", async () => {
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			const messages = [
-				{
-					ts: 1,
-					type: "say" as const,
-					say: "text" as const,
-					text: "test message",
-				},
-			]
-
-			await client.backfillMessages(messages, "test-task-id")
-
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://app.roocode.com/api/events/backfill",
-				expect.objectContaining({
-					method: "POST",
-					headers: {
-						Authorization: "Bearer mock-token",
-					},
-					body: expect.any(FormData),
-				}),
-			)
-
-			// Verify FormData contents - should work with just taskId
-			const call = mockFetch.mock.calls[0]
-			const formData = call?.[1]?.body as FormData
-
-			expect(formData.get("taskId")).toBe("test-task-id")
-			expect(formData.get("properties")).toBe(
-				JSON.stringify({
-					taskId: "test-task-id",
-				}),
-			)
-
-			// The messages are stored as a File object under the "file" key
-			const fileField = formData.get("file") as File
-			expect(fileField).toBeInstanceOf(File)
-			expect(fileField.name).toBe("task.json")
-			expect(fileField.type).toBe("application/json")
-
-			// Read the file content to verify the messages
-			const fileContent = await fileField.text()
-			expect(fileContent).toBe(JSON.stringify(messages))
-		})
-
-		it("should handle fetch errors gracefully", async () => {
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			mockFetch.mockRejectedValue(new Error("Network error"))
-
-			const messages = [
-				{
-					ts: 1,
-					type: "say" as const,
-					say: "text" as const,
-					text: "test message",
-				},
-			]
-
-			await expect(client.backfillMessages(messages, "test-task-id")).resolves.not.toThrow()
-
-			expect(console.error).toHaveBeenCalledWith(
-				expect.stringContaining(
-					"[TelemetryClient#backfillMessages] Error uploading messages: Error: Network error",
-				),
-			)
-		})
-
-		it("should handle HTTP error responses", async () => {
-			const client = new TelemetryClient(mockAuthService, mockSettingsService)
-
-			mockFetch.mockResolvedValue({
-				ok: false,
-				status: 404,
-				statusText: "Not Found",
-			})
-
-			const messages = [
-				{
-					ts: 1,
-					type: "say" as const,
-					say: "text" as const,
-					text: "test message",
-				},
-			]
-
-			await client.backfillMessages(messages, "test-task-id")
-
-			expect(console.error).toHaveBeenCalledWith(
-				"[TelemetryClient#backfillMessages] POST events/backfill -> 404 Not Found",
-			)
-		})
-
-		it("should handle empty messages array", async () => {
+		it("should handle empty messages array without sending requests", async () => {
 			const client = new TelemetryClient(mockAuthService, mockSettingsService)
 
 			await client.backfillMessages([], "test-task-id")
 
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://app.roocode.com/api/events/backfill",
-				expect.objectContaining({
-					method: "POST",
-					headers: {
-						Authorization: "Bearer mock-token",
-					},
-					body: expect.any(FormData),
-				}),
-			)
-
-			// Verify FormData contents
-			const call = mockFetch.mock.calls[0]
-			const formData = call?.[1]?.body as FormData
-
-			// The messages are stored as a File object under the "file" key
-			const fileField = formData.get("file") as File
-			expect(fileField).toBeInstanceOf(File)
-			expect(fileField.name).toBe("task.json")
-			expect(fileField.type).toBe("application/json")
-
-			// Read the file content to verify the empty messages array
-			const fileContent = await fileField.text()
-			expect(fileContent).toBe("[]")
+			expect(mockFetch).not.toHaveBeenCalled()
 		})
 	})
 })

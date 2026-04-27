@@ -1,16 +1,3 @@
-<div align="center">
-<sub>
-
-<b>English</b> • [Català](locales/ca/CODE_OF_CONDUCT.md) • [Deutsch](locales/de/CODE_OF_CONDUCT.md) • [Español](locales/es/CODE_OF_CONDUCT.md) • [Français](locales/fr/CODE_OF_CONDUCT.md) • [हिंदी](locales/hi/CODE_OF_CONDUCT.md) • [Bahasa Indonesia](locales/id/CODE_OF_CONDUCT.md) • [Italiano](locales/it/CODE_OF_CONDUCT.md) • [日本語](locales/ja/CODE_OF_CONDUCT.md)
-
-</sub>
-<sub>
-
-[한국어](locales/ko/CODE_OF_CONDUCT.md) • [Nederlands](locales/nl/CODE_OF_CONDUCT.md) • [Polski](locales/pl/CODE_OF_CONDUCT.md) • [Português (BR)](locales/pt-BR/CODE_OF_CONDUCT.md) • [Русский](locales/ru/CODE_OF_CONDUCT.md) • [Türkçe](locales/tr/CODE_OF_CONDUCT.md) • [Tiếng Việt](locales/vi/CODE_OF_CONDUCT.md) • [简体中文](locales/zh-CN/CODE_OF_CONDUCT.md) • [繁體中文](locales/zh-TW/CODE_OF_CONDUCT.md)
-
-</sub>
-</div>
-
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge
@@ -52,7 +39,7 @@ response to any instances of unacceptable behavior.
 
 Project maintainers have the right and responsibility to remove, edit, or
 reject comments, commits, code, wiki edits, issues, and other contributions
-that are not aligned to this Code of Conduct, or to ban temporarily or
+that are not aligned with this Code of Conduct, or to ban temporarily or
 permanently any contributor for other behaviors that they deem inappropriate,
 threatening, offensive, or harmful.
 
@@ -68,11 +55,11 @@ further defined and clarified by project maintainers.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project team at support@roocode.com. All complaints
-will be reviewed and investigated and will result in a response that
-is deemed necessary and appropriate to the circumstances. The project team is
-obligated to maintain confidentiality with regard to the reporter of an incident.
-Further details of specific enforcement policies may be posted separately.
+reported by opening a GitHub Issue. All complaints will be reviewed and
+investigated and will result in a response that is deemed necessary and
+appropriate to the circumstances. The project team is obligated to maintain
+confidentiality with regard to the reporter of an incident. Further details of
+specific enforcement policies may be posted separately.
 
 Project maintainers who do not follow or enforce the Code of Conduct in good
 faith may face temporary or permanent repercussions as determined by other
@@ -80,10 +67,9 @@ members of the project's leadership.
 
 ## Attribution
 
-This Code of Conduct is adapted from [Cline's version][cline_coc] of the [Contributor Covenant][homepage], version 1.4,
+This Code of Conduct is adapted from the [Contributor Covenant][homepage], version 1.4,
 available at https://www.contributor-covenant.org/version/1/4/code-of-conduct.html
 
-[cline_coc]: https://github.com/cline/cline/blob/main/CODE_OF_CONDUCT.md
 [homepage]: https://www.contributor-covenant.org
 
 For answers to common questions about this code of conduct, see

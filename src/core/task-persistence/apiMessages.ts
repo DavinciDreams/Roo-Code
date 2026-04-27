@@ -35,6 +35,8 @@ export type ApiMessage = Anthropic.MessageParam & {
 	truncationParent?: string
 	// Identifies a message as a truncation boundary marker
 	isTruncationMarker?: boolean
+	// Identifies a message as synthetic/meta (e.g., retry markers)
+	isMeta?: boolean
 }
 
 export async function readApiMessages({

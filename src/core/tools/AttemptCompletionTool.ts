@@ -30,6 +30,8 @@ interface DelegationProvider {
 		parentTaskId: string
 		childTaskId: string
 		completionResultSummary: string
+		completionPayload?: Record<string, unknown>
+		childFailed?: boolean
 	}): Promise<void>
 }
 
@@ -169,10 +171,22 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 
 		pushToolResult("")
 
+		// If the result is valid JSON, pass it as a structured payload alongside the summary.
+		let completionPayload: Record<string, unknown> | undefined
+		try {
+			const parsed = JSON.parse(result)
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				completionPayload = parsed as Record<string, unknown>
+			}
+		} catch {
+			// Not JSON — leave completionPayload undefined
+		}
+
 		await provider.reopenParentFromDelegation({
 			parentTaskId: task.parentTaskId!,
 			childTaskId: task.taskId,
 			completionResultSummary: result,
+			completionPayload,
 		})
 
 		return "delegated"

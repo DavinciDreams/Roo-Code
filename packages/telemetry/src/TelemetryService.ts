@@ -164,6 +164,40 @@ export class TelemetryService {
 		this.captureEvent(TelemetryEventName.CONSECUTIVE_MISTAKE_ERROR, { taskId })
 	}
 
+	public captureWorktreeCreated(taskId: string, worktreePath: string): void {
+		this.captureEvent(TelemetryEventName.WORKTREE_CREATED, { taskId, worktreePath })
+	}
+
+	public captureWorktreeDeleted(taskId: string, worktreePath: string): void {
+		this.captureEvent(TelemetryEventName.WORKTREE_DELETED, { taskId, worktreePath })
+	}
+
+	public captureWorktreeOrphanDetected(worktreePath: string): void {
+		this.captureEvent(TelemetryEventName.WORKTREE_ORPHAN_DETECTED, { worktreePath })
+	}
+
+	public captureParallelTaskSpawned(parentTaskId: string, taskCount: number): void {
+		this.captureEvent(TelemetryEventName.PARALLEL_TASK_SPAWNED, { parentTaskId, taskCount })
+	}
+
+	public captureParallelTaskCompleted(
+		parentTaskId: string,
+		completedCount: number,
+		totalCount: number,
+		hadFailures: boolean,
+	): void {
+		this.captureEvent(TelemetryEventName.PARALLEL_TASK_COMPLETED, {
+			parentTaskId,
+			completedCount,
+			totalCount,
+			hadFailures,
+		})
+	}
+
+	public captureParallelTaskChildFailed(parentTaskId: string, childTaskId: string): void {
+		this.captureEvent(TelemetryEventName.PARALLEL_TASK_CHILD_FAILED, { parentTaskId, childTaskId })
+	}
+
 	/**
 	 * Captures when a tab is shown due to user action
 	 * @param tab The tab that was shown
