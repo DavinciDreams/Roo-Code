@@ -11,6 +11,7 @@ import { getWorkerBackend } from "../../swarm/backends/registry"
 
 vi.mock("../../swarm/backends/registry", () => ({
 	getWorkerBackend: vi.fn(() => ({
+		name: "cli" as const,
 		spawn: vi.fn().mockResolvedValue({ agentId: "worker-1@session-1", pid: 1234 }),
 		waitForAll: vi.fn().mockResolvedValue(undefined),
 		terminate: vi.fn().mockResolvedValue(undefined),
@@ -244,6 +245,7 @@ describe("SpawnSwarmTool — CLI backend", () => {
 		tool = new SpawnSwarmTool()
 		callbacks = makeCallbacks()
 		vi.mocked(getWorkerBackend).mockReturnValue({
+			name: "cli" as const,
 			spawn: vi.fn().mockResolvedValue({ agentId: "worker-1@session-1", pid: 1234 }),
 			waitForAll: vi.fn().mockResolvedValue(undefined),
 			terminate: vi.fn().mockResolvedValue(undefined),
@@ -268,6 +270,7 @@ describe("SpawnSwarmTool — CLI backend", () => {
 	it("spawns one CliWorkerBackend process per worker spec", async () => {
 		const spawnFn = vi.fn().mockResolvedValue({ agentId: "worker-1@session-1", pid: 1234 })
 		vi.mocked(getWorkerBackend).mockReturnValue({
+			name: "cli" as const,
 			spawn: spawnFn,
 			waitForAll: vi.fn().mockResolvedValue(undefined),
 			terminate: vi.fn(),
@@ -286,6 +289,7 @@ describe("SpawnSwarmTool — CLI backend", () => {
 	it("waits for all CLI processes to exit via waitForAll", async () => {
 		const waitForAllFn = vi.fn().mockResolvedValue(undefined)
 		vi.mocked(getWorkerBackend).mockReturnValue({
+			name: "cli" as const,
 			spawn: vi.fn().mockResolvedValue({ agentId: "w@s", pid: 1 }),
 			waitForAll: waitForAllFn,
 			terminate: vi.fn(),
