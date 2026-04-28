@@ -17,6 +17,7 @@ import { SearchTool } from "./SearchTool.js"
 import { CommandTool } from "./CommandTool.js"
 import { ModeTool } from "./ModeTool.js"
 import { CompletionTool } from "./CompletionTool.js"
+import { SwarmTool } from "./SwarmTool.js"
 import { GenericTool } from "./GenericTool.js"
 
 // Re-export types
@@ -33,6 +34,7 @@ export { SearchTool } from "./SearchTool.js"
 export { CommandTool } from "./CommandTool.js"
 export { ModeTool } from "./ModeTool.js"
 export { CompletionTool } from "./CompletionTool.js"
+export { SwarmTool } from "./SwarmTool.js"
 export { GenericTool } from "./GenericTool.js"
 
 /**
@@ -45,6 +47,7 @@ const CATEGORY_RENDERERS: Record<string, React.FC<ToolRendererProps>> = {
 	command: CommandTool,
 	mode: ModeTool,
 	completion: CompletionTool,
+	swarm: SwarmTool,
 	other: GenericTool,
 }
 

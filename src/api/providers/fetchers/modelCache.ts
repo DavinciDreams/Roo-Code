@@ -43,11 +43,29 @@ async function writeModels(router: RouterName, data: ModelRecord) {
 }
 
 async function readModels(router: RouterName): Promise<ModelRecord | undefined> {
+	// ContextProxy may not be available before extension activation or in the CLI.
+	const storagePath = ContextProxy.instance?.globalStorageUri?.fsPath
+	if (!storagePath) {
+		return undefined
+	}
+
 	const filename = `${router}_models.json`
-	const cacheDir = await getCacheDirectoryPath(ContextProxy.instance.globalStorageUri.fsPath)
+	const cacheDir = await getCacheDirectoryPath(storagePath)
 	const filePath = path.join(cacheDir, filename)
 	const exists = await fileExistsAtPath(filePath)
-	return exists ? JSON.parse(await fs.readFile(filePath, "utf8")) : undefined
+	if (!exists) {
+		return undefined
+	}
+
+	const raw = JSON.parse(await fs.readFile(filePath, "utf8"))
+	const validation = modelRecordSchema.safeParse(raw)
+
+	if (!validation.success) {
+		console.warn(`[MODEL_CACHE] readModels: invalid disk cache for ${router}, ignoring:`, validation.error.format())
+		return undefined
+	}
+
+	return validation.data
 }
 
 /**
@@ -87,7 +105,7 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getVercelAiGatewayModels()
 			break
 		case "roo": {
-			// Moo Code Cloud provider requires baseUrl and optional apiKey
+			// Morse Code Cloud provider requires baseUrl and optional apiKey
 			const rooBaseUrl = options.baseUrl ?? process.env.ROO_CODE_PROVIDER_URL ?? ""
 			models = await getRooModels(rooBaseUrl, options.apiKey)
 			break
@@ -123,6 +141,17 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 
 	if (models) {
 		return models
+	}
+
+	// Disk fallback: try async file cache before hitting the network.
+	try {
+		const diskModels = await readModels(provider)
+		if (diskModels && Object.keys(diskModels).length > 0) {
+			memoryCache.set(provider, diskModels)
+			return diskModels
+		}
+	} catch (diskErr) {
+		console.error(`[getModels] Error reading ${provider} models from disk cache:`, diskErr)
 	}
 
 	try {
@@ -229,9 +258,9 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
  * Refreshes public provider caches without blocking or requiring auth.
  * Should be called once during extension activation.
  */
-export async function initializeModelCacheRefresh(): Promise<void> {
+export function initializeModelCacheRefresh(): () => void {
 	// Wait for extension to fully activate before refreshing
-	setTimeout(async () => {
+	const handle = setTimeout(async () => {
 		// Providers that work without API keys
 		const publicProviders: Array<{ provider: RouterName; options: GetModelsOptions }> = [
 			{ provider: "openrouter", options: { provider: "openrouter" } },
@@ -248,6 +277,8 @@ export async function initializeModelCacheRefresh(): Promise<void> {
 			await new Promise((resolve) => setTimeout(resolve, 500))
 		}
 	}, 2000)
+
+	return () => clearTimeout(handle)
 }
 
 /**

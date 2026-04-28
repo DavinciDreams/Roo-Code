@@ -23,7 +23,7 @@ function asObjectSafe(value: any): object {
 
 		return {}
 	} catch (error) {
-		console.warn("Moo Code <Language Model API>: Failed to parse object:", error)
+		console.warn("Morse Code <Language Model API>: Failed to parse object:", error)
 		return {}
 	}
 }
@@ -184,7 +184,7 @@ export function extractTextCountFromMessage(message: vscode.LanguageModelChatMes
 					try {
 						text += JSON.stringify(item.input)
 					} catch (error) {
-						console.error("Moo Code <Language Model API>: Failed to stringify tool call input:", error)
+						console.error("Morse Code <Language Model API>: Failed to stringify tool call input:", error)
 					}
 				}
 			}

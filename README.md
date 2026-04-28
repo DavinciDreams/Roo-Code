@@ -1,4 +1,4 @@
-# Moo Code
+# Morse Code
 
 A self-hosted fork of [Roo Code](https://github.com/RooCodeInc/Roo-Code) — an AI-powered coding assistant for VS Code.
 
@@ -37,7 +37,7 @@ cd src && pnpm vsix
 ### Install Extension
 
 ```sh
-code --install-extension ../bin/moo-code-{version}.vsix
+code --install-extension ../bin/morse-code-{version}.vsix
 ```
 
 ## Development

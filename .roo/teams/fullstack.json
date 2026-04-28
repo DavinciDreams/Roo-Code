@@ -1,0 +1,66 @@
+{
+	"slug": "fullstack",
+	"name": "Full-Stack Feature Team",
+	"description": "Three-phase team for building full-stack features: discovery → implementation → review",
+	"orchestratorMode": "orchestrator",
+	"conventions": ".roo/teams/conventions/fullstack.md",
+	"phases": [
+		{
+			"name": "discovery",
+			"label": "Discovery & Planning",
+			"concurrent": true,
+			"requireApproval": true,
+			"agents": [
+				{
+					"mode": "architect",
+					"role": "Backend Architect",
+					"instruction": "Analyze the backend requirements for the following task and produce a detailed technical spec.\n\nTask: {{task}}\n\nDeliverables:\n- API endpoints needed (method, path, request/response shapes)\n- Database schema changes (if any)\n- Key implementation risks or unknowns\n\nOutput as structured markdown."
+				},
+				{
+					"mode": "architect",
+					"role": "Frontend Architect",
+					"instruction": "Analyze the frontend requirements for the following task and produce a detailed technical spec.\n\nTask: {{task}}\n\nDeliverables:\n- Component tree and data flow\n- State management approach\n- API integration points\n- UX edge cases to handle\n\nOutput as structured markdown."
+				}
+			]
+		},
+		{
+			"name": "implementation",
+			"label": "Implementation",
+			"concurrent": false,
+			"requireApproval": false,
+			"abortOnChildFailure": true,
+			"agents": [
+				{
+					"mode": "code",
+					"role": "Backend Engineer",
+					"instruction": "Implement the backend changes for this task.\n\nTask: {{task}}\n\nDiscovery results:\n{{context}}\n\nWrite production-quality code. Run tests after each significant change. Do not leave TODOs.",
+					"worktree": "feat/{{team}}-backend"
+				},
+				{
+					"mode": "code",
+					"role": "Frontend Engineer",
+					"instruction": "Implement the frontend changes for this task.\n\nTask: {{task}}\n\nDiscovery results:\n{{context}}\n\nWrite production-quality code. Ensure the UI handles loading, error, and empty states. Do not leave TODOs.",
+					"worktree": "feat/{{team}}-frontend"
+				}
+			]
+		},
+		{
+			"name": "review",
+			"label": "Code Review",
+			"concurrent": true,
+			"requireApproval": false,
+			"agents": [
+				{
+					"mode": "code",
+					"role": "Security Reviewer",
+					"instruction": "Review the implementation for security issues.\n\nTask: {{task}}\n\nImplementation summary:\n{{context}}\n\nFocus on: input validation, auth/authz, injection risks, sensitive data exposure. Output a list of findings (severity: critical/high/medium/low) with suggested fixes."
+				},
+				{
+					"mode": "code",
+					"role": "QA Engineer",
+					"instruction": "Review the implementation for correctness and test coverage.\n\nTask: {{task}}\n\nImplementation summary:\n{{context}}\n\nFocus on: missing test cases, edge cases not handled, regression risks. Output a list of findings with suggested test additions."
+				}
+			]
+		}
+	]
+}

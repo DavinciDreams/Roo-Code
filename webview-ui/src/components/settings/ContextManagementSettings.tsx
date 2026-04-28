@@ -135,7 +135,6 @@ export const ContextManagementSettings = ({
 			}
 
 			setCachedStateField("profileThresholds", newThresholds)
-			vscode.postMessage({ type: "updateSettings", updatedSettings: { profileThresholds: newThresholds } })
 		}
 	}
 	return (
@@ -476,59 +475,63 @@ export const ContextManagementSettings = ({
 				<SearchableSetting
 					settingId="context-session-memory"
 					section="contextManagement"
-					label="Session Memory Compaction">
+					label={t("settings:contextManagement.sessionMemoryCompaction.label")}>
 					<div className="flex justify-between items-center">
-						<span className="block font-medium">Session Memory Compaction</span>
+						<span className="block font-medium">
+							{t("settings:contextManagement.sessionMemoryCompaction.label")}
+						</span>
 						<Button
 							variant="ghost"
 							size="sm"
 							onClick={() =>
-								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.sessionMemory" })
+								vscode.postMessage({ type: "openVSCodeSettings", text: "morse-code.sessionMemory" })
 							}
-							title="Open in VS Code Settings">
+							title={t("settings:contextManagement.sessionMemoryCompaction.configureTitle")}>
 							<span className="codicon codicon-settings-gear mr-1" />
-							Configure
+							{t("settings:contextManagement.sessionMemoryCompaction.configure")}
 						</Button>
 					</div>
 					<div className="text-vscode-descriptionForeground text-sm mt-1">
-						Extracts structured notes from your conversation and uses them when compacting context, avoiding
-						an extra LLM call. Configure thresholds via{" "}
+						{t("settings:contextManagement.sessionMemoryCompaction.description")}{" "}
 						<button
 							className="underline cursor-pointer bg-transparent border-0 text-vscode-textLink-foreground p-0"
 							onClick={() =>
-								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.sessionMemory" })
+								vscode.postMessage({ type: "openVSCodeSettings", text: "morse-code.sessionMemory" })
 							}>
-							VS Code Settings
+							{t("settings:contextManagement.sessionMemoryCompaction.vsCodeSettingsLink")}
 						</button>
 						.
 					</div>
 				</SearchableSetting>
 
 				{/* Compact Hooks */}
-				<SearchableSetting settingId="context-compact-hooks" section="contextManagement" label="Compact Hooks">
+				<SearchableSetting
+					settingId="context-compact-hooks"
+					section="contextManagement"
+					label={t("settings:contextManagement.compactHooks.label")}>
 					<div className="flex justify-between items-center">
-						<span className="block font-medium">Compact Hooks</span>
+						<span className="block font-medium">{t("settings:contextManagement.compactHooks.label")}</span>
 						<Button
 							variant="ghost"
 							size="sm"
 							onClick={() =>
-								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.compactHooks" })
+								vscode.postMessage({ type: "openVSCodeSettings", text: "morse-code.compactHooks" })
 							}
-							title="Open in VS Code Settings">
+							title={t("settings:contextManagement.compactHooks.configureTitle")}>
 							<span className="codicon codicon-settings-gear mr-1" />
-							Configure
+							{t("settings:contextManagement.compactHooks.configure")}
 						</Button>
 					</div>
 					<div className="text-vscode-descriptionForeground text-sm mt-1">
-						Run shell commands or HTTP webhooks before and after context condensation. Define hooks in{" "}
+						{t("settings:contextManagement.compactHooks.description")}{" "}
 						<code className="text-xs bg-vscode-textCodeBlock-background px-1 rounded">.roo-hooks.json</code>{" "}
-						at the workspace root. Configure via{" "}
+						{t("settings:contextManagement.compactHooks.descriptionSuffix")}{" "}
 						<button
 							className="underline cursor-pointer bg-transparent border-0 text-vscode-textLink-foreground p-0"
 							onClick={() =>
-								vscode.postMessage({ type: "openVSCodeSettings", text: "moo-code.compactHooks" })
+								vscode.postMessage({ type: "openVSCodeSettings", text: "morse-code.compactHooks" })
 							}>
-							VS Code Settings
+							{t("settings:contextManagement.compactHooks.vsCodeSettingsLink")}
 						</button>
 						.
 					</div>

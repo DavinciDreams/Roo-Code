@@ -6,6 +6,7 @@
 	"type": "module",
 	"main": "dist/index.js",
 	"bin": {
+		"morse": "dist/index.js",
 		"roo": "dist/index.js"
 	},
 	"scripts": {

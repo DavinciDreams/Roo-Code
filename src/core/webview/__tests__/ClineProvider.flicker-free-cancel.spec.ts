@@ -191,9 +191,11 @@ describe("ClineProvider flicker-free cancel", () => {
 		vi.mocked(Task).mockImplementation(() => mockTask2 as any)
 	})
 
-	it("should not remove current task from stack when rehydrating same taskId", async () => {
-		// Setup: Add a task to the stack first
-		;(provider as any).clineStack = [mockTask1]
+	it("should not remove current task from map when rehydrating same taskId", async () => {
+		// Setup: Add a task to the map first
+		;(provider as any).tasks = new Map([["task-1", mockTask1]])
+		;(provider as any).focusedTaskId = "task-1"
+		;(provider as any).leaderTaskId = "task-1"
 
 		// Mock event listeners for cleanup
 		;(provider as any).taskEventListeners = new WeakMap()
@@ -221,9 +223,9 @@ describe("ClineProvider flicker-free cancel", () => {
 		// Assert: removeClineFromStack should NOT be called
 		expect(removeClineFromStackSpy).not.toHaveBeenCalled()
 
-		// Verify the task was replaced in-place
-		expect((provider as any).clineStack).toHaveLength(1)
-		expect((provider as any).clineStack[0]).toBe(mockTask2)
+		// Verify the task was replaced in-place (new task under same focusedTaskId)
+		expect((provider as any).tasks.size).toBe(1)
+		expect((provider as any).tasks.get("task-1")).toBe(mockTask2)
 
 		// Verify old event listeners were cleaned up
 		expect(mockCleanupFunctions[0]).toHaveBeenCalled()
@@ -233,9 +235,10 @@ describe("ClineProvider flicker-free cancel", () => {
 		expect(mockTask2.emit).toHaveBeenCalledWith("taskFocused")
 	})
 
-	it("should remove task from stack when creating different task", async () => {
-		// Setup: Add a task to the stack first
-		;(provider as any).clineStack = [mockTask1]
+	it("should remove task from map when creating different task", async () => {
+		// Setup: Add a task to the map first
+		;(provider as any).tasks = new Map([["task-1", mockTask1]])
+		;(provider as any).focusedTaskId = "task-1"
 
 		// Spy on removeClineFromStack to verify it IS called
 		const removeClineFromStackSpy = vi.spyOn(provider, "removeClineFromStack").mockResolvedValue(undefined)
@@ -259,9 +262,10 @@ describe("ClineProvider flicker-free cancel", () => {
 		expect(removeClineFromStackSpy).toHaveBeenCalled()
 	})
 
-	it("should handle empty stack gracefully during rehydration attempt", async () => {
-		// Setup: Empty stack
-		;(provider as any).clineStack = []
+	it("should handle empty map gracefully during rehydration attempt", async () => {
+		// Setup: Empty map
+		;(provider as any).tasks = new Map()
+		;(provider as any).focusedTaskId = undefined
 
 		// Spy on removeClineFromStack
 		const removeClineFromStackSpy = vi.spyOn(provider, "removeClineFromStack").mockResolvedValue(undefined)
@@ -285,19 +289,24 @@ describe("ClineProvider flicker-free cancel", () => {
 		expect(removeClineFromStackSpy).toHaveBeenCalled()
 	})
 
-	it("should maintain task stack integrity during flicker-free replacement", async () => {
-		// Setup: Stack with multiple tasks
+	it("should maintain task map integrity during flicker-free replacement", async () => {
+		// Setup: Map with multiple tasks (parent + current child)
 		const mockParentTask = {
 			taskId: "parent-task",
 			instanceId: "parent-instance",
 			emit: vi.fn(),
 		}
 
-		;(provider as any).clineStack = [mockParentTask, mockTask1]
+		;(provider as any).tasks = new Map([
+			["parent-task", mockParentTask],
+			["task-1", mockTask1],
+		])
+		;(provider as any).focusedTaskId = "task-1"
+		;(provider as any).leaderTaskId = "parent-task"
 		;(provider as any).taskEventListeners = new WeakMap()
 		;(provider as any).taskEventListeners.set(mockTask1, [vi.fn()])
 
-		// Act: Rehydrate the current (top) task
+		// Act: Rehydrate the current (focused) task
 		const historyItem: HistoryItem = {
 			id: "task-1",
 			number: 1,
@@ -311,9 +320,9 @@ describe("ClineProvider flicker-free cancel", () => {
 
 		await provider.createTaskWithHistoryItem(historyItem)
 
-		// Assert: Stack should maintain parent task and replace current task
-		expect((provider as any).clineStack).toHaveLength(2)
-		expect((provider as any).clineStack[0]).toBe(mockParentTask)
-		expect((provider as any).clineStack[1]).toBe(mockTask2)
+		// Assert: Map should maintain parent task and replace current task
+		expect((provider as any).tasks.size).toBe(2)
+		expect((provider as any).tasks.get("parent-task")).toBe(mockParentTask)
+		expect((provider as any).tasks.get("task-1")).toBe(mockTask2)
 	})
 })

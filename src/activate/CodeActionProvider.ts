@@ -7,11 +7,11 @@ import { getCodeActionCommand } from "../utils/commands"
 import { EditorUtils } from "../integrations/editor/EditorUtils"
 
 export const TITLES: Record<CodeActionName, string> = {
-	EXPLAIN: "Explain with Moo Code",
-	FIX: "Fix with Moo Code",
-	IMPROVE: "Improve with Moo Code",
-	ADD_TO_CONTEXT: "Add to Moo Code",
-	NEW_TASK: "New Moo Code Task",
+	EXPLAIN: "Explain with Morse Code",
+	FIX: "Fix with Morse Code",
+	IMPROVE: "Improve with Morse Code",
+	ADD_TO_CONTEXT: "Add to Morse Code",
+	NEW_TASK: "New Morse Code Task",
 } as const
 
 export class CodeActionProvider implements vscode.CodeActionProvider {

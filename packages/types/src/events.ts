@@ -51,6 +51,15 @@ export enum RooCodeEventName {
 	ModesResponse = "modesResponse",
 	ModelsResponse = "modelsResponse",
 
+	// Swarm Lifecycle
+	SwarmSessionStarted = "swarmSessionStarted",
+	SwarmSessionEnded = "swarmSessionEnded",
+	WorkerRegistered = "workerRegistered",
+	WorkerIdle = "workerIdle",
+	WorkerShutdown = "workerShutdown",
+	PermissionRequested = "permissionRequested",
+	PermissionResolved = "permissionResolved",
+
 	// Evals
 	EvalPass = "evalPass",
 	EvalFail = "evalFail",
@@ -111,6 +120,14 @@ export const rooCodeEventsSchema = z.object({
 
 	[RooCodeEventName.TaskToolFailed]: z.tuple([z.string(), toolNamesSchema, z.string()]),
 	[RooCodeEventName.TaskTokenUsageUpdated]: z.tuple([z.string(), tokenUsageSchema, toolUsageSchema]),
+
+	[RooCodeEventName.SwarmSessionStarted]: z.tuple([z.string(), z.string()]), // [sessionId, leaderTaskId]
+	[RooCodeEventName.SwarmSessionEnded]: z.tuple([z.string(), z.string()]), // [sessionId, leaderTaskId]
+	[RooCodeEventName.WorkerRegistered]: z.tuple([z.string(), z.string(), z.string(), z.string()]), // [sessionId, taskId, agentName, agentColor]
+	[RooCodeEventName.WorkerIdle]: z.tuple([z.string(), z.string()]), // [sessionId, taskId]
+	[RooCodeEventName.WorkerShutdown]: z.tuple([z.string(), z.string()]), // [sessionId, taskId]
+	[RooCodeEventName.PermissionRequested]: z.tuple([z.string(), z.string(), z.string()]), // [workerTaskId, toolName, requestId]
+	[RooCodeEventName.PermissionResolved]: z.tuple([z.string(), z.string(), z.boolean()]), // [workerTaskId, requestId, allowed]
 
 	[RooCodeEventName.ModeChanged]: z.tuple([z.string()]),
 	[RooCodeEventName.ProviderProfileChanged]: z.tuple([z.object({ name: z.string(), provider: z.string() })]),
@@ -271,6 +288,43 @@ export const taskEventSchema = z.discriminatedUnion("eventName", [
 	z.object({
 		eventName: z.literal(RooCodeEventName.ModelsResponse),
 		payload: rooCodeEventsSchema.shape[RooCodeEventName.ModelsResponse],
+		taskId: z.number().optional(),
+	}),
+
+	// Swarm Lifecycle
+	z.object({
+		eventName: z.literal(RooCodeEventName.SwarmSessionStarted),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.SwarmSessionStarted],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.SwarmSessionEnded),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.SwarmSessionEnded],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.WorkerRegistered),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.WorkerRegistered],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.WorkerIdle),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.WorkerIdle],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.WorkerShutdown),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.WorkerShutdown],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.PermissionRequested),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.PermissionRequested],
+		taskId: z.number().optional(),
+	}),
+	z.object({
+		eventName: z.literal(RooCodeEventName.PermissionResolved),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.PermissionResolved],
 		taskId: z.number().optional(),
 	}),
 

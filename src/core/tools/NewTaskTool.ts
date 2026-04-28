@@ -18,9 +18,39 @@ interface NewTaskParams {
 	worktree?: string
 }
 
+interface NewTaskProvider {
+	getState(): Promise<{ customModes?: Array<{ slug: string; name: string }> } | undefined>
+	delegateParentAndOpenChild(params: {
+		parentTaskId: string
+		message: string
+		initialTodos: TodoItem[]
+		mode: string
+		worktree?: string
+	}): Promise<{ taskId: string }>
+}
+
+/**
+ * Tool that spawns a single child task and delegates control to it.
+ *
+ * The parent task is suspended while the child runs. The child is launched in
+ * the specified mode with the given prompt and an optional pre-populated todo
+ * list. When the workspace configuration requires todos, the tool enforces their
+ * presence before proceeding.
+ */
 export class NewTaskTool extends BaseTool<"new_task"> {
 	readonly name = "new_task" as const
 
+	/**
+	 * Validates parameters, resolves the target mode, requests user approval, and
+	 * delegates the parent task to the newly spawned child.
+	 *
+	 * @param params.mode - Slug of the mode the child task should run in.
+	 * @param params.message - The initial prompt delivered to the child task.
+	 * @param params.todos - Optional markdown checklist pre-loaded into the child's todo list.
+	 * @param params.worktree - Optional git worktree path the child task should operate in.
+	 * @param task - The owning (parent) Task instance.
+	 * @param callbacks - Standard tool callbacks for approval, error handling, and result delivery.
+	 */
 	async execute(params: NewTaskParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { mode, message, todos, worktree } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
@@ -111,7 +141,7 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 			}
 
 			// Delegate parent and open child as sole active task
-			const child = await (provider as any).delegateParentAndOpenChild({
+			const child = await (provider as unknown as NewTaskProvider).delegateParentAndOpenChild({
 				parentTaskId: task.taskId,
 				message: unescapedMessage,
 				initialTodos: todoItems,
@@ -128,6 +158,10 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 		}
 	}
 
+	/**
+	 * Streams a partial UI update while the mode and message are still arriving
+	 * from the model, giving the user early visibility into the pending delegation.
+	 */
 	override async handlePartial(task: Task, block: ToolUse<"new_task">): Promise<void> {
 		const mode: string | undefined = block.params.mode
 		const message: string | undefined = block.params.message

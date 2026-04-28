@@ -129,8 +129,11 @@ async function main() {
 	 */
 	const workerConfig = {
 		...buildOptions,
-		entryPoints: ["workers/countTokens.ts"],
+		entryPoints: ["workers/countTokens.ts", "workers/morse-worker.ts"],
 		outdir: "dist/workers",
+		// Exclude vscode so the worker bundle doesn't embed a broken stub if a
+		// transitive dependency ever pulls in a vscode import.
+		external: ["vscode"],
 	}
 
 	const [extensionCtx, workerCtx] = await Promise.all([

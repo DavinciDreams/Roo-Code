@@ -70,6 +70,8 @@ export interface ExtensionHostOptions {
 	user: User | null
 	provider: SupportedProvider
 	apiKey?: string
+	/** When true, apiKey is treated as an OAuth Bearer token (for Claude Code Max) */
+	anthropicUseAuthToken?: boolean
 	model: string
 	workspacePath: string
 	extensionPath: string
@@ -228,6 +230,7 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 				customTools: true,
 			},
 			...getProviderSettings(this.options.provider, this.options.apiKey, this.options.model),
+			...(this.options.anthropicUseAuthToken ? { anthropicUseAuthToken: true } : {}),
 		}
 
 		this.initialSettings = this.options.nonInteractive

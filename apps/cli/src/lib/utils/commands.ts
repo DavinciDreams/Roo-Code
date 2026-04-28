@@ -8,9 +8,20 @@
 
 /**
  * Action types that can be triggered by global commands.
- * Each action corresponds to a message type sent to the extension host.
+ *
+ * Extension actions  — forwarded to the extension host via sendToExtension.
+ * Informational      — handled locally in the CLI layer (display data from store).
  */
-export type GlobalCommandAction = "clearTask"
+export type GlobalCommandAction =
+	// Extension-side actions
+	| "clearTask"
+	| "setMode"
+	// CLI-local informational actions
+	| "showHelp"
+	| "showCost"
+	| "showModel"
+	| "showMode"
+	| "showSessions"
 
 /**
  * Definition of a CLI global command
@@ -22,6 +33,8 @@ export interface GlobalCommand {
 	description: string
 	/** Action to trigger when the command is executed */
 	action: GlobalCommandAction
+	/** Whether this command accepts an optional argument (shown in autocomplete) */
+	argumentHint?: string
 }
 
 /**
@@ -31,8 +44,39 @@ export interface GlobalCommand {
 export const GLOBAL_COMMANDS: GlobalCommand[] = [
 	{
 		name: "new",
-		description: "Start a new task",
+		description: "Start a new task (clears conversation)",
 		action: "clearTask",
+	},
+	{
+		name: "clear",
+		description: "Clear the current task and start fresh",
+		action: "clearTask",
+	},
+	{
+		name: "help",
+		description: "Show available CLI commands",
+		action: "showHelp",
+	},
+	{
+		name: "cost",
+		description: "Show token usage and cost for this session",
+		action: "showCost",
+	},
+	{
+		name: "model",
+		description: "Show the current model",
+		action: "showModel",
+	},
+	{
+		name: "mode",
+		description: "Show the current mode, or switch to a different mode",
+		action: "showMode",
+		argumentHint: "[slug]",
+	},
+	{
+		name: "sessions",
+		description: "List recent task sessions",
+		action: "showSessions",
 	},
 ]
 
@@ -50,12 +94,14 @@ export function getGlobalCommand(name: string): GlobalCommand | undefined {
 export function getGlobalCommandsForAutocomplete(): Array<{
 	name: string
 	description?: string
+	argumentHint?: string
 	source: "global" | "project" | "built-in"
 	action?: string
 }> {
 	return GLOBAL_COMMANDS.map((cmd) => ({
 		name: cmd.name,
 		description: cmd.description,
+		argumentHint: cmd.argumentHint,
 		source: "global" as const,
 		action: cmd.action,
 	}))

@@ -1,6 +1,6 @@
 {
-	"name": "moo-code-nightly",
-	"publisher": "moo-code",
+	"name": "morse-code-nightly",
+	"publisher": "morse-code",
 	"version": "0.0.1",
 	"icon": "assets/icons/icon-nightly.png",
 	"scripts": {}
