@@ -8,6 +8,8 @@ import { formatResponse } from "../prompts/responses"
 import { Package } from "../../shared/package"
 import type { ToolUse } from "../../shared/tools"
 import { t } from "../../i18n"
+import type { MailboxManager } from "../swarm/MailboxManager"
+import type { SwarmRegistry } from "../swarm/SwarmRegistry"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 
@@ -33,6 +35,21 @@ interface DelegationProvider {
 		completionPayload?: Record<string, unknown>
 		childFailed?: boolean
 	}): Promise<void>
+	/** Returns the live Task instance if it is still registered (concurrent mode check). */
+	getTaskById?(taskId: string): import("../task/Task").Task | undefined
+	/** Resolves a concurrent child's completion Promise in the parent's spawnConcurrentChildren call. */
+	resolveChildCompletion?(params: {
+		childTaskId: string
+		summary: string
+		payload?: Record<string, unknown>
+		failed?: boolean
+	}): Promise<void>
+	/** SwarmRegistry — used to find which session a task belongs to. */
+	swarmRegistry?: SwarmRegistry
+	/** MailboxManager — only present when the session was started with persistent:true. */
+	mailboxManager?: MailboxManager
+	/** EventEmitter — used to emit swarm lifecycle events. */
+	emit?(event: string, ...args: unknown[]): boolean
 }
 
 export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
@@ -109,6 +126,7 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 							if (delegation === "delegated") {
 								this.emitTaskCompleted(task)
 							}
+							// "reassigned" — worker continues; do NOT emit TaskCompleted
 							if (delegation !== "continue") return
 						} else {
 							// Unexpected status (undefined or "delegated") - log error and skip delegation
@@ -151,9 +169,10 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 	/**
 	 * Handles the common delegation flow when a subtask completes.
 	 * Returns:
-	 * - "delegated" when completion was approved and parent resumed
-	 * - "denied" when user denied finishing the subtask
-	 * - "continue" when caller should fall through to normal completion ask flow
+	 * - "delegated"   completion was approved and parent resumed (or concurrent Promise resolved)
+	 * - "reassigned"  worker received a new task_assignment; LLM loop continues without completing
+	 * - "denied"      user denied finishing the subtask
+	 * - "continue"    caller should fall through to normal completion ask flow
 	 */
 	private async delegateToParent(
 		task: Task,
@@ -161,15 +180,13 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 		provider: DelegationProvider,
 		askFinishSubTaskApproval: () => Promise<boolean>,
 		pushToolResult: (result: string) => void,
-	): Promise<"delegated" | "denied" | "continue"> {
+	): Promise<"delegated" | "reassigned" | "denied" | "continue"> {
 		const didApprove = await askFinishSubTaskApproval()
 
 		if (!didApprove) {
 			pushToolResult(formatResponse.toolDenied())
 			return "denied"
 		}
-
-		pushToolResult("")
 
 		// If the result is valid JSON, pass it as a structured payload alongside the summary.
 		let completionPayload: Record<string, unknown> | undefined
@@ -182,6 +199,51 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			// Not JSON — leave completionPayload undefined
 		}
 
+		// Concurrent path: if the parent task is still alive in the provider's task map,
+		// this child was spawned concurrently — either enter the idle loop (persistent) or
+		// resolve its completion Promise immediately.
+		const parentIsAlive =
+			typeof provider.getTaskById === "function" && provider.getTaskById(task.parentTaskId!) !== undefined
+		if (parentIsAlive && typeof provider.resolveChildCompletion === "function") {
+			// Idle loop — only for persistent swarm sessions (a mailbox exists for the session).
+			const session = provider.swarmRegistry?.getSessionForTask(task.taskId)
+			const mailbox = session ? provider.mailboxManager?.getMailbox(session.sessionId) : undefined
+
+			if (session && mailbox) {
+				// Notify the leader that this worker is idle.
+				await provider.mailboxManager!.notifyIdle(session.sessionId, task.taskId, result, completionPayload)
+				provider.emit?.(RooCodeEventName.WorkerIdle, session.sessionId, task.taskId)
+
+				// Wait for leader to either assign a new task or shut us down.
+				const nextMsg = await provider.mailboxManager!.waitForNextMessage(session.sessionId, task.taskId, {
+					timeoutMs: 300_000, // 5-minute safety timeout
+				})
+
+				if (nextMsg?.type === "task_assignment" && typeof nextMsg.payload?.message === "string") {
+					// Give worker a new task — do NOT resolve the parent's completion Promise.
+					pushToolResult(
+						`[Task complete]\n\nNew task assigned by swarm leader:\n\n${nextMsg.payload.message}`,
+					)
+					return "reassigned"
+				}
+
+				// shutdown_request or timeout — fall through to complete normally.
+				if (nextMsg?.type === "shutdown_request") {
+					provider.emit?.(RooCodeEventName.WorkerShutdown, session.sessionId, task.taskId)
+				}
+			}
+
+			pushToolResult("")
+			await provider.resolveChildCompletion({
+				childTaskId: task.taskId,
+				summary: result,
+				payload: completionPayload,
+			})
+			return "delegated"
+		}
+
+		// Sequential path: parent was disposed; recreate it from history.
+		pushToolResult("")
 		await provider.reopenParentFromDelegation({
 			parentTaskId: task.parentTaskId!,
 			childTaskId: task.taskId,

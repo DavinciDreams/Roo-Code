@@ -5,7 +5,7 @@ import { ClineProvider } from "../core/webview/ClineProvider"
 
 describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 	/**
-	 * Helper to build a minimal mock provider with a single task on the stack.
+	 * Helper to build a minimal mock provider with a single task in the map.
 	 * The task's parentTaskId and taskId are configurable.
 	 */
 	function buildMockProvider(opts: {
@@ -33,7 +33,9 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 				})
 
 		const provider = {
-			clineStack: [childTask] as any[],
+			tasks: new Map([[opts.childTaskId, childTask as any]]),
+			focusedTaskId: opts.childTaskId as string | undefined,
+			leaderTaskId: opts.childTaskId as string | undefined,
 			taskEventListeners: new Map(),
 			log: vi.fn(),
 			getTaskWithId,
@@ -64,8 +66,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 
 		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
 
-		// Stack should be empty after pop
-		expect(provider.clineStack).toHaveLength(0)
+		// Map should be empty after removal
+		expect(provider.tasks.size).toBe(0)
 
 		// Parent lookup should have been called
 		expect(getTaskWithId).toHaveBeenCalledWith("parent-1")
@@ -93,8 +95,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 
 		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
 
-		// Stack should be empty
-		expect(provider.clineStack).toHaveLength(0)
+		// Map should be empty
+		expect(provider.tasks.size).toBe(0)
 
 		// No parent lookup or update should happen
 		expect(getTaskWithId).not.toHaveBeenCalled()
@@ -161,8 +163,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		// Should NOT throw
 		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
 
-		// Stack should still be empty (pop was not blocked)
-		expect(provider.clineStack).toHaveLength(0)
+		// Map should still be empty (removal was not blocked)
+		expect(provider.tasks.size).toBe(0)
 
 		// The abort should still have been called
 		expect(childTask.abortTask).toHaveBeenCalledWith(true)
@@ -176,9 +178,11 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		expect(updateTaskHistory).not.toHaveBeenCalled()
 	})
 
-	it("handles empty stack gracefully", async () => {
+	it("handles empty map gracefully", async () => {
 		const provider = {
-			clineStack: [] as any[],
+			tasks: new Map() as Map<string, any>,
+			focusedTaskId: undefined as string | undefined,
+			leaderTaskId: undefined as string | undefined,
 			taskEventListeners: new Map(),
 			log: vi.fn(),
 			getTaskWithId: vi.fn(),
@@ -188,7 +192,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		// Should not throw
 		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
 
-		expect(provider.clineStack).toHaveLength(0)
+		expect(provider.tasks.size).toBe(0)
 		expect(provider.getTaskWithId).not.toHaveBeenCalled()
 		expect(provider.updateTaskHistory).not.toHaveBeenCalled()
 	})
@@ -215,8 +219,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		// Call with skipDelegationRepair: true (as delegateParentAndOpenChild would)
 		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { skipDelegationRepair: true })
 
-		// Stack should be empty after pop
-		expect(provider.clineStack).toHaveLength(0)
+		// Map should be empty after removal
+		expect(provider.tasks.size).toBe(0)
 
 		// Parent lookup should NOT have been called — repair was skipped entirely
 		expect(getTaskWithId).not.toHaveBeenCalled()
@@ -258,7 +262,9 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		const updateTaskHistory = vi.fn().mockResolvedValue([])
 
 		const provider = {
-			clineStack: [taskB] as any[],
+			tasks: new Map([["task-B", taskB as any]]),
+			focusedTaskId: "task-B" as string | undefined,
+			leaderTaskId: "task-B" as string | undefined,
 			taskEventListeners: new Map(),
 			log: vi.fn(),
 			getTaskWithId,
@@ -268,8 +274,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		// Simulate what delegateParentAndOpenChild does: pop B with skipDelegationRepair
 		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { skipDelegationRepair: true })
 
-		// B was popped
-		expect(provider.clineStack).toHaveLength(0)
+		// B was removed
+		expect(provider.tasks.size).toBe(0)
 
 		// Grandparent A should NOT have been looked up or modified
 		expect(getTaskWithId).not.toHaveBeenCalled()

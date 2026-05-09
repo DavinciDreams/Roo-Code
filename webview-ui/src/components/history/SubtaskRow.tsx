@@ -7,6 +7,17 @@ import { countAllSubtasks } from "./types"
 import { StandardTooltip } from "../ui"
 import SubtaskCollapsibleRow from "./SubtaskCollapsibleRow"
 
+const AGENT_COLOR_MAP: Record<string, string> = {
+	red: "#f87171",
+	blue: "#60a5fa",
+	green: "#4ade80",
+	yellow: "#facc15",
+	purple: "#c084fc",
+	orange: "#fb923c",
+	pink: "#f472b6",
+	cyan: "#22d3ee",
+}
+
 interface SubtaskRowProps {
 	/** The subtask tree node to display */
 	node: SubtaskTreeNode
@@ -49,9 +60,19 @@ const SubtaskRow = ({ node, depth, onToggleExpand, className }: SubtaskRowProps)
 						handleClick()
 					}
 				}}>
-				<StandardTooltip content={item.task} delay={600}>
-					<span className="text-sm line-clamp-1">{item.task}</span>
-				</StandardTooltip>
+				<div className="flex items-center gap-1.5 min-w-0">
+					{item.agentColor && AGENT_COLOR_MAP[item.agentColor] && (
+						<StandardTooltip content={item.agentName ?? item.agentColor} delay={300}>
+							<span
+								className="size-2 rounded-full shrink-0"
+								style={{ backgroundColor: AGENT_COLOR_MAP[item.agentColor] }}
+							/>
+						</StandardTooltip>
+					)}
+					<StandardTooltip content={item.task} delay={600}>
+						<span className="text-sm line-clamp-1">{item.task}</span>
+					</StandardTooltip>
+				</div>
 				<ArrowRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 			</div>
 

@@ -40,8 +40,10 @@ describe("Single-open-task invariant", () => {
 		const addClineToStack = vi.fn().mockResolvedValue(undefined)
 
 		const provider = {
-			// Simulate an existing task present in stack
-			clineStack: [{ taskId: "existing-1" }],
+			// Simulate an existing task present in the map
+			tasks: new Map([["existing-1", { taskId: "existing-1" }]]),
+			focusedTaskId: "existing-1",
+			leaderTaskId: "existing-1",
 			setValues: vi.fn(),
 			getState: vi.fn().mockResolvedValue({
 				apiConfiguration: { apiProvider: "anthropic", consecutiveMistakeLimit: 0 },

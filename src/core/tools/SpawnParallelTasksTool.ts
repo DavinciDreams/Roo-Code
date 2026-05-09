@@ -18,13 +18,18 @@ interface SpawnParallelTasksParams {
 	tasks: ParallelTaskSpec[]
 	/** When true, the entire queue is abandoned if any child task fails or is aborted. Default: false (continue on failure). */
 	abortOnChildFailure?: boolean
+	/**
+	 * When true, all child tasks run concurrently (parent stays alive; JS cooperative multitasking).
+	 * When false (default), tasks run sequentially via the parallel queue drain mechanism.
+	 */
+	concurrent?: boolean
 }
 
 export class SpawnParallelTasksTool extends BaseTool<"spawn_parallel_tasks"> {
 	readonly name = "spawn_parallel_tasks" as const
 
 	async execute(params: SpawnParallelTasksParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { tasks, abortOnChildFailure = false } = params
+		const { tasks, abortOnChildFailure = false, concurrent = false } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
@@ -89,27 +94,43 @@ export class SpawnParallelTasksTool extends BaseTool<"spawn_parallel_tasks"> {
 
 			task.consecutiveMistakeCount = 0
 
-			// The first task starts immediately; the rest are queued in the parent's history.
-			// reopenParentFromDelegation will drain the queue, starting each child in turn,
-			// and resume the parent with aggregated results when the queue is empty.
-			const [first, ...rest] = parsedTasks
+			if (concurrent) {
+				// Concurrent path: all children run simultaneously; parent stays alive.
+				// spawnConcurrentChildren awaits all completions and returns aggregated results.
+				const results = await (provider as any).spawnConcurrentChildren({
+					parentTaskId: task.taskId,
+					tasks: parsedTasks.map((t) => ({
+						mode: t.spec.mode,
+						message: t.spec.message,
+						worktree: t.spec.worktree || undefined,
+						todos: t.todoItems,
+					})),
+					abortOnChildFailure,
+				})
+				pushToolResult(JSON.stringify(results, null, 2))
+			} else {
+				// Sequential fan-out: first task starts immediately; the rest are queued in the
+				// parent's history. reopenParentFromDelegation drains the queue, starting each
+				// child in turn, and resumes the parent with aggregated results when empty.
+				const [first, ...rest] = parsedTasks
 
-			await (provider as any).delegateParentAndOpenChild({
-				parentTaskId: task.taskId,
-				message: first.spec.message,
-				initialTodos: first.todoItems,
-				mode: first.spec.mode,
-				worktree: first.spec.worktree || undefined,
-				abortOnChildFailure,
-				parallelQueue: rest.map((t) => ({
-					mode: t.spec.mode,
-					message: t.spec.message,
-					worktree: t.spec.worktree || undefined,
-					todos: t.spec.todos || undefined,
-				})),
-			})
+				await (provider as any).delegateParentAndOpenChild({
+					parentTaskId: task.taskId,
+					message: first.spec.message,
+					initialTodos: first.todoItems,
+					mode: first.spec.mode,
+					worktree: first.spec.worktree || undefined,
+					abortOnChildFailure,
+					parallelQueue: rest.map((t) => ({
+						mode: t.spec.mode,
+						message: t.spec.message,
+						worktree: t.spec.worktree || undefined,
+						todos: t.spec.todos || undefined,
+					})),
+				})
 
-			pushToolResult(`Spawned ${tasks.length} sequential tasks. Awaiting all results...`)
+				pushToolResult(`Spawned ${tasks.length} sequential tasks. Awaiting all results...`)
+			}
 		} catch (error) {
 			await handleError("spawning parallel tasks", error)
 		}

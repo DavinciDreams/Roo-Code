@@ -50,6 +50,12 @@ export const historyItemSchema = z.object({
 		)
 		.optional(), // Accumulated results from completed parallel children
 	abortOnChildFailure: z.boolean().optional(), // When true, the entire parallel queue is abandoned if any child fails
+	// Swarm identity — set by spawnConcurrentChildren for workers, and on the leader task
+	swarmSessionId: z.string().optional(),
+	agentId: z.string().optional(), // "<name>@<sessionId>"
+	agentName: z.string().optional(), // Human-readable role label
+	agentColor: z.string().optional(), // AgentColorName
+	isSwarmLeader: z.boolean().optional(),
 })
 
 export type HistoryItem = z.infer<typeof historyItemSchema>

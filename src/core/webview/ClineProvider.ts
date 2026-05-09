@@ -77,6 +77,10 @@ import { CodeIndexManager } from "../../services/code-index/manager"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
 import { MdmService } from "../../services/mdm/MdmService"
 import { SkillsManager } from "../../services/skills/SkillsManager"
+import { TeamsManager } from "../../services/teams/TeamsManager"
+import { SwarmRegistry } from "../swarm/SwarmRegistry"
+import { MailboxManager } from "../swarm/MailboxManager"
+import { registerPermissionHandler, showWorkerPermissionDialog } from "../swarm/LeaderPermissionBridge"
 
 import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
@@ -137,12 +141,25 @@ export class ClineProvider
 	private disposables: vscode.Disposable[] = []
 	private webviewDisposables: vscode.Disposable[] = []
 	private view?: vscode.WebviewView | vscode.WebviewPanel
-	private clineStack: Task[] = []
+	private tasks: Map<string, Task> = new Map()
+	private focusedTaskId?: string
+	private leaderTaskId?: string
+	private childCompletionHandlers: Map<
+		string,
+		{
+			resolve: (result: { summary: string; payload?: Record<string, unknown> }) => void
+			reject: (reason: Error) => void
+		}
+	> = new Map()
 	private codeIndexStatusSubscription?: vscode.Disposable
 	private codeIndexManager?: CodeIndexManager
 	private _workspaceTracker?: WorkspaceTracker // workSpaceTracker read-only for access outside this class
 	protected mcpHub?: McpHub // Change from private to protected
 	protected skillsManager?: SkillsManager
+	protected teamsManager?: TeamsManager
+	protected swarmRegistry: SwarmRegistry = new SwarmRegistry()
+	protected mailboxManager: MailboxManager = new MailboxManager()
+	private permissionBridgeCleanup?: () => void
 	private marketplaceManager: MarketplaceManager
 	private mdmService?: MdmService
 	private taskCreationCallback: (task: Task) => void
@@ -231,6 +248,15 @@ export class ClineProvider
 		this.skillsManager.initialize().catch((error) => {
 			this.log(`Failed to initialize Skills Manager: ${error}`)
 		})
+
+		// Initialize Teams Manager for team workflow discovery
+		this.teamsManager = new TeamsManager(this)
+		this.teamsManager.initialize().catch((error) => {
+			this.log(`Failed to initialize Teams Manager: ${error}`)
+		})
+
+		// Register as the in-process permission approval surface for concurrent workers.
+		this.permissionBridgeCleanup = registerPermissionHandler(showWorkerPermissionDialog)
 
 		this.marketplaceManager = new MarketplaceManager(this.context, this.customModesManager)
 
@@ -465,14 +491,13 @@ export class ClineProvider
 		}
 	}
 
-	// Adds a new Task instance to clineStack, marking the start of a new task.
-	// The instance is pushed to the top of the stack (LIFO order).
-	// When the task is completed, the top instance is removed, reactivating the
-	// previous task.
+	// Registers a Task instance and marks it as focused/leader.
 	async addClineToStack(task: Task) {
-		// Add this cline instance into the stack that represents the order of
-		// all the called tasks.
-		this.clineStack.push(task)
+		this.tasks.set(task.taskId, task)
+		this.focusedTaskId = task.taskId
+		if (!task.parentTask) {
+			this.leaderTaskId = task.taskId
+		}
 		task.emit(RooCodeEventName.TaskFocused)
 
 		// Perform special setup provider specific tasks.
@@ -504,85 +529,99 @@ export class ClineProvider
 		}
 	}
 
-	// Removes and destroys the top Cline instance (the current finished task),
-	// activating the previous one (resuming the parent task).
-	async removeClineFromStack(options?: { skipDelegationRepair?: boolean }) {
-		if (this.clineStack.length === 0) {
+	// Removes and destroys a Task instance, refocusing the parent if applicable.
+	// Pass taskId to remove a specific task (e.g. a concurrent child); omit to remove
+	// whichever task is currently focused.
+	async removeClineFromStack(options?: { skipDelegationRepair?: boolean; taskId?: string }) {
+		if (this.tasks.size === 0) {
 			return
 		}
 
-		// Pop the top Cline instance from the stack.
-		let task = this.clineStack.pop()
+		const resolveId = options?.taskId ?? this.focusedTaskId
+		if (!resolveId) {
+			return
+		}
 
-		if (task) {
-			// Capture delegation metadata before abort/dispose, since abortTask(true)
-			// is async and the task reference is cleared afterwards.
-			const childTaskId = task.taskId
-			const parentTaskId = task.parentTaskId
+		let task = this.tasks.get(resolveId)
+		if (!task) {
+			return
+		}
 
-			task.emit(RooCodeEventName.TaskUnfocused)
+		this.tasks.delete(resolveId)
 
+		// Update focus: if we just removed the focused task, focus the parent (or any remaining task).
+		if (this.focusedTaskId === resolveId) {
+			const parentId = task.parentTask?.taskId
+			if (parentId && this.tasks.has(parentId)) {
+				this.focusedTaskId = parentId
+			} else {
+				// Fall back to the most recently added task, or clear.
+				const remaining = Array.from(this.tasks.keys())
+				this.focusedTaskId = remaining.length > 0 ? remaining[remaining.length - 1] : undefined
+			}
+		}
+
+		// Update leader if the leader was removed.
+		if (this.leaderTaskId === resolveId) {
+			this.leaderTaskId = this.focusedTaskId
+		}
+
+		// Capture delegation metadata before abort/dispose.
+		const childTaskId = task.taskId
+		const parentTaskId = task.parentTaskId
+
+		task.emit(RooCodeEventName.TaskUnfocused)
+
+		try {
+			await task.abortTask(true)
+		} catch (e) {
+			this.log(
+				`[ClineProvider#removeClineFromStack] abortTask() failed ${task.taskId}.${task.instanceId}: ${e.message}`,
+			)
+		}
+
+		const cleanupFunctions = this.taskEventListeners.get(task)
+		if (cleanupFunctions) {
+			cleanupFunctions.forEach((cleanup) => cleanup())
+			this.taskEventListeners.delete(task)
+		}
+
+		// Allow GC.
+		task = undefined
+
+		// Delegation-aware parent metadata repair:
+		// Skip when called from delegateParentAndOpenChild() during nested delegation
+		// transitions (A→B→C), where the caller will update the parent to point at the new child.
+		if (parentTaskId && childTaskId && !options?.skipDelegationRepair) {
 			try {
-				// Abort the running task and set isAbandoned to true so
-				// all running promises will exit as well.
-				await task.abortTask(true)
-			} catch (e) {
-				this.log(
-					`[ClineProvider#removeClineFromStack] abortTask() failed ${task.taskId}.${task.instanceId}: ${e.message}`,
-				)
-			}
+				const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
 
-			// Remove event listeners before clearing the reference.
-			const cleanupFunctions = this.taskEventListeners.get(task)
-
-			if (cleanupFunctions) {
-				cleanupFunctions.forEach((cleanup) => cleanup())
-				this.taskEventListeners.delete(task)
-			}
-
-			// Make sure no reference kept, once promises end it will be
-			// garbage collected.
-			task = undefined
-
-			// Delegation-aware parent metadata repair:
-			// If the popped task was a delegated child, repair the parent's metadata
-			// so it transitions from "delegated" back to "active" and becomes resumable
-			// from the task history list.
-			// Skip when called from delegateParentAndOpenChild() during nested delegation
-			// transitions (A→B→C), where the caller intentionally replaces the active
-			// child and will update the parent to point at the new child.
-			if (parentTaskId && childTaskId && !options?.skipDelegationRepair) {
-				try {
-					const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
-
-					if (parentHistory.status === "delegated" && parentHistory.awaitingChildId === childTaskId) {
-						await this.updateTaskHistory({
-							...parentHistory,
-							status: "active",
-							awaitingChildId: undefined,
-						})
-						this.log(
-							`[ClineProvider#removeClineFromStack] Repaired parent ${parentTaskId} metadata: delegated → active (child ${childTaskId} removed)`,
-						)
-					}
-				} catch (err) {
-					// Non-fatal: log but do not block the pop operation.
+				if (parentHistory.status === "delegated" && parentHistory.awaitingChildId === childTaskId) {
+					await this.updateTaskHistory({
+						...parentHistory,
+						status: "active",
+						awaitingChildId: undefined,
+					})
 					this.log(
-						`[ClineProvider#removeClineFromStack] Failed to repair parent metadata for ${parentTaskId} (non-fatal): ${
-							err instanceof Error ? err.message : String(err)
-						}`,
+						`[ClineProvider#removeClineFromStack] Repaired parent ${parentTaskId} metadata: delegated → active (child ${childTaskId} removed)`,
 					)
 				}
+			} catch (err) {
+				this.log(
+					`[ClineProvider#removeClineFromStack] Failed to repair parent metadata for ${parentTaskId} (non-fatal): ${
+						err instanceof Error ? err.message : String(err)
+					}`,
+				)
 			}
 		}
 	}
 
 	getTaskStackSize(): number {
-		return this.clineStack.length
+		return this.tasks.size
 	}
 
 	public getCurrentTaskStack(): string[] {
-		return this.clineStack.map((cline) => cline.taskId)
+		return Array.from(this.tasks.keys())
 	}
 
 	// Pending Edit Operations Management
@@ -673,9 +712,9 @@ export class ClineProvider
 		this._disposed = true
 		this.log("Disposing ClineProvider...")
 
-		// Clear all tasks from the stack.
-		while (this.clineStack.length > 0) {
-			await this.removeClineFromStack()
+		// Clear all tasks from the map.
+		for (const taskId of Array.from(this.tasks.keys())) {
+			await this.removeClineFromStack({ taskId })
 		}
 
 		this.log("Cleared all tasks")
@@ -710,6 +749,11 @@ export class ClineProvider
 		this.mcpHub = undefined
 		await this.skillsManager?.dispose()
 		this.skillsManager = undefined
+		this.teamsManager = undefined
+		this.swarmRegistry.dispose()
+		this.mailboxManager.dispose()
+		this.permissionBridgeCleanup?.()
+		this.permissionBridgeCleanup = undefined
 		this.marketplaceManager?.cleanup()
 		this.customModesManager?.dispose()
 		this.taskHistoryStore.dispose()
@@ -1095,30 +1139,33 @@ export class ClineProvider
 		})
 
 		if (isRehydratingCurrentTask) {
-			// Replace the current task in-place to avoid UI flicker
-			const stackIndex = this.clineStack.length - 1
+			// Replace the focused task in-place to avoid UI flicker.
+			const oldTask = this.focusedTaskId ? this.tasks.get(this.focusedTaskId) : undefined
 
-			// Properly dispose of the old task to ensure garbage collection
-			const oldTask = this.clineStack[stackIndex]
+			if (oldTask) {
+				try {
+					await oldTask.abortTask(true)
+				} catch (e) {
+					this.log(
+						`[createTaskWithHistoryItem] abortTask() failed for old task ${oldTask.taskId}.${oldTask.instanceId}: ${e.message}`,
+					)
+				}
 
-			// Abort the old task to stop running processes and mark as abandoned
-			try {
-				await oldTask.abortTask(true)
-			} catch (e) {
-				this.log(
-					`[createTaskWithHistoryItem] abortTask() failed for old task ${oldTask.taskId}.${oldTask.instanceId}: ${e.message}`,
-				)
+				const cleanupFunctions = this.taskEventListeners.get(oldTask)
+				if (cleanupFunctions) {
+					cleanupFunctions.forEach((cleanup) => cleanup())
+					this.taskEventListeners.delete(oldTask)
+				}
+
+				this.tasks.delete(oldTask.taskId)
 			}
 
-			// Remove event listeners from the old task
-			const cleanupFunctions = this.taskEventListeners.get(oldTask)
-			if (cleanupFunctions) {
-				cleanupFunctions.forEach((cleanup) => cleanup())
-				this.taskEventListeners.delete(oldTask)
+			// Register the new task under its own id while preserving focus.
+			this.tasks.set(task.taskId, task)
+			this.focusedTaskId = task.taskId
+			if (!task.parentTask) {
+				this.leaderTaskId = task.taskId
 			}
-
-			// Replace the task in the stack
-			this.clineStack[stackIndex] = task
 			task.emit(RooCodeEventName.TaskFocused)
 
 			// Perform preparation tasks and set up event listeners
@@ -1864,13 +1911,7 @@ export class ClineProvider
 
 	/* Condenses a task's message history to use fewer tokens. */
 	async condenseTaskContext(taskId: string) {
-		let task: Task | undefined
-		for (let i = this.clineStack.length - 1; i >= 0; i--) {
-			if (this.clineStack[i].taskId === taskId) {
-				task = this.clineStack[i]
-				break
-			}
-		}
+		const task = this.tasks.get(taskId)
 		if (!task) {
 			throw new Error(`Task with id ${taskId} not found in stack`)
 		}
@@ -2756,6 +2797,10 @@ export class ClineProvider
 		return this.skillsManager
 	}
 
+	public getTeamConfig(slug: string): import("@roo-code/types").TeamConfig | undefined {
+		return this.teamsManager?.getTeamConfig(slug)
+	}
+
 	/**
 	 * Check if the current state is compliant with MDM policy
 	 * @returns true if compliant or no MDM policy exists, false if MDM policy exists and user is non-compliant
@@ -2834,11 +2879,14 @@ export class ClineProvider
 	 */
 
 	public getCurrentTask(): Task | undefined {
-		if (this.clineStack.length === 0) {
+		if (!this.focusedTaskId) {
 			return undefined
 		}
+		return this.tasks.get(this.focusedTaskId)
+	}
 
-		return this.clineStack[this.clineStack.length - 1]
+	public getTaskById(taskId: string): Task | undefined {
+		return this.tasks.get(taskId)
 	}
 
 	public getRecentTasks(): string[] {
@@ -2997,12 +3045,12 @@ export class ClineProvider
 			task: text,
 			images,
 			experiments,
-			rootTask: this.clineStack.length > 0 ? this.clineStack[0] : undefined,
+			rootTask: this.leaderTaskId ? this.tasks.get(this.leaderTaskId) : undefined,
 			parentTask,
-			taskNumber: this.clineStack.length + 1,
+			taskNumber: this.tasks.size + 1,
 			onCreated: this.taskCreationCallback,
 			initialTodos: options.initialTodos,
-			// Ensure this task is present in clineStack before startTask() emits
+			// Ensure this task is present in the tasks map before startTask() emits
 			// its initial state update, so state.currentTaskId is available ASAP.
 			startTask: false,
 			...options,
@@ -3109,8 +3157,8 @@ export class ClineProvider
 	// Clear the current task without treating it as a subtask.
 	// This is used when the user cancels a task that is not a subtask.
 	public async clearTask(): Promise<void> {
-		if (this.clineStack.length > 0) {
-			const task = this.clineStack[this.clineStack.length - 1]
+		const task = this.getCurrentTask()
+		if (task) {
 			console.log(`[clearTask] clearing task ${task.taskId}.${task.instanceId}`)
 			await this.removeClineFromStack()
 		}
@@ -3784,6 +3832,248 @@ export class ClineProvider
 	}
 
 	/**
+	 * Concurrent fan-out: spawn all child tasks simultaneously (parent stays alive in the map),
+	 * then await all completions via Promise.all before returning aggregated results.
+	 *
+	 * The parent task MUST be in this.tasks and is NOT removed — it remains registered
+	 * with its focusedTaskId preserved while children run. Each child calls
+	 * resolveChildCompletion() when it finishes (from AttemptCompletionTool concurrent path).
+	 */
+	public async spawnConcurrentChildren(params: {
+		parentTaskId: string
+		tasks: Array<{ mode: string; message: string; worktree?: string; todos?: TodoItem[]; role?: string }>
+		abortOnChildFailure?: boolean
+		/** When true, workers enter an idle loop after each turn and await task_assignment
+		 *  or shutdown_request instead of completing immediately. */
+		persistent?: boolean
+	}): Promise<Array<{ taskId: string; summary: string; payload?: Record<string, unknown>; error?: string }>> {
+		const { parentTaskId, tasks, abortOnChildFailure = false, persistent = false } = params
+
+		const parent = this.tasks.get(parentTaskId)
+		if (!parent) {
+			throw new Error(`[spawnConcurrentChildren] Parent task ${parentTaskId} not found in active tasks`)
+		}
+
+		TelemetryService.instance.captureParallelTaskSpawned(parentTaskId, tasks.length)
+		this.log(`[spawnConcurrentChildren] Spawning ${tasks.length} concurrent children for parent ${parentTaskId}`)
+
+		// Create a swarm session so every worker gets a stable identity + color.
+		const sessionId = parentTaskId
+		this.swarmRegistry.createSession(sessionId, parentTaskId)
+		if (persistent) {
+			this.mailboxManager.createMailbox(sessionId)
+		}
+		this.emit(RooCodeEventName.SwarmSessionStarted, sessionId, parentTaskId)
+
+		// Mark parent as swarm leader in its history item.
+		try {
+			const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
+			await this.updateTaskHistory({ ...parentHistory, swarmSessionId: sessionId, isSwarmLeader: true })
+		} catch {
+			// non-fatal
+		}
+
+		// Phase 1: sequential setup — mode switch and task creation must be serialised to
+		// prevent handleModeSwitch() from racing (it mutates global provider mode state).
+		// Task.start() is NOT called yet; that happens in phase 2.
+		type ChildEntry = {
+			child: Task
+			taskIdForError: string
+			completionPromise: Promise<{
+				taskId: string
+				summary: string
+				payload?: Record<string, unknown>
+				error?: string
+			}>
+		}
+		const entries: ChildEntry[] = []
+
+		for (let i = 0; i < tasks.length; i++) {
+			const spec = tasks[i]
+
+			try {
+				await this.handleModeSwitch(spec.mode as any)
+			} catch {
+				// non-fatal
+			}
+
+			let childWorktreePath: string | undefined
+			if (spec.worktree) {
+				childWorktreePath = await this._createWorktreeForTask(parent.workspacePath, spec.worktree, parentTaskId)
+			}
+
+			const child = await this.createTask(spec.message, undefined, parent as any, {
+				initialTodos: spec.todos ?? [],
+				initialStatus: "active",
+				startTask: false,
+				workspacePath: childWorktreePath,
+			})
+
+			// Assign swarm identity to this worker.
+			const agentName = spec.role ?? `worker-${i + 1}`
+			const agentColor = this.swarmRegistry.assignColor()
+			const agentId = `${agentName}@${sessionId}`
+			const identity: import("@roo-code/types").AgentIdentity = {
+				agentId,
+				agentName,
+				color: agentColor,
+				isLeader: false,
+				taskId: child.taskId,
+			}
+			this.swarmRegistry.registerWorker(sessionId, identity)
+			this.emit(RooCodeEventName.WorkerRegistered, sessionId, child.taskId, agentName, agentColor)
+
+			try {
+				const { historyItem: childHistory } = await this.getTaskWithId(child.taskId)
+				await this.updateTaskHistory({
+					...childHistory,
+					...(childWorktreePath ? { worktreePath: childWorktreePath } : {}),
+					swarmSessionId: sessionId,
+					agentId,
+					agentName,
+					agentColor,
+				})
+			} catch {
+				// non-fatal
+			}
+
+			const completionPromise = new Promise<{
+				taskId: string
+				summary: string
+				payload?: Record<string, unknown>
+				error?: string
+			}>((resolve, reject) => {
+				this.childCompletionHandlers.set(child.taskId, {
+					resolve: (result) => resolve({ taskId: child.taskId, ...result }),
+					reject,
+				})
+			})
+
+			entries.push({ child, taskIdForError: child.taskId, completionPromise })
+		}
+
+		// Phase 2: start all children in a tight sync loop so they run concurrently.
+		for (const { child } of entries) {
+			child.start()
+			this.emit(RooCodeEventName.TaskSpawned, child.taskId)
+			this.emit(RooCodeEventName.TaskDelegated, parentTaskId, child.taskId)
+		}
+
+		// Phase 3: await completions.
+		// When abortOnChildFailure is set, the first rejection aborts all remaining siblings.
+		let abortTriggered = false
+		const abortSiblings = async (failedTaskId: string) => {
+			if (abortTriggered) return
+			abortTriggered = true
+			for (const { child } of entries) {
+				if (child.taskId === failedTaskId) continue
+				const handler = this.childCompletionHandlers.get(child.taskId)
+				this.childCompletionHandlers.delete(child.taskId)
+				// Abort the running child task.
+				await this.removeClineFromStack({ taskId: child.taskId, skipDelegationRepair: true })
+				handler?.reject(new Error("Aborted: sibling task failed"))
+				TelemetryService.instance.captureParallelTaskChildFailed(parentTaskId, child.taskId)
+			}
+			this.log(`[spawnConcurrentChildren] Aborted remaining siblings after child ${failedTaskId} failed`)
+		}
+
+		const wrappedPromises = entries.map(({ child, completionPromise }) =>
+			completionPromise.then(
+				(r) => r,
+				async (err: unknown) => {
+					if (abortOnChildFailure) {
+						await abortSiblings(child.taskId)
+					}
+					throw err
+				},
+			),
+		)
+
+		const settled = await Promise.allSettled(wrappedPromises)
+		const results: Array<{ taskId: string; summary: string; payload?: Record<string, unknown>; error?: string }> =
+			settled.map((s, i) => {
+				if (s.status === "fulfilled") {
+					return s.value
+				}
+				const msg = s.reason instanceof Error ? s.reason.message : String(s.reason)
+				return { taskId: entries[i]?.taskIdForError ?? `child-${i}`, summary: msg, error: msg }
+			})
+
+		const hadFailures = results.some((r) => r.error !== undefined)
+		TelemetryService.instance.captureParallelTaskCompleted(parentTaskId, results.length, tasks.length, hadFailures)
+		this.log(
+			`[spawnConcurrentChildren] All ${tasks.length} children completed for parent ${parentTaskId}. failures=${hadFailures}`,
+		)
+
+		if (persistent) {
+			this.mailboxManager.destroyMailbox(sessionId)
+		}
+		this.swarmRegistry.destroySession(sessionId)
+		this.emit(RooCodeEventName.SwarmSessionEnded, sessionId, parentTaskId)
+
+		return results
+	}
+
+	/** Assign a new task to an idle persistent worker. */
+	public async assignTaskToWorker(sessionId: string, workerId: string, message: string): Promise<void> {
+		await this.mailboxManager.assignTask(sessionId, workerId, message)
+	}
+
+	/** Send shutdown_request to all workers in a session so they resolve and the parent can collect results. */
+	public async shutdownWorkers(sessionId: string): Promise<void> {
+		const session = this.swarmRegistry.getSession(sessionId)
+		if (!session) return
+		await Promise.all(
+			Object.keys(session.teammates).map((workerId) => this.mailboxManager.shutdownWorker(sessionId, workerId)),
+		)
+	}
+
+	/**
+	 * Called by AttemptCompletionTool when a concurrent child completes.
+	 * Resolves the Promise registered in childCompletionHandlers for this child,
+	 * then removes the child from the tasks map.
+	 */
+	public async resolveChildCompletion(params: {
+		childTaskId: string
+		summary: string
+		payload?: Record<string, unknown>
+		failed?: boolean
+	}): Promise<void> {
+		const { childTaskId, summary, payload, failed } = params
+		const handler = this.childCompletionHandlers.get(childTaskId)
+		this.childCompletionHandlers.delete(childTaskId)
+
+		// Update child history to "completed" and clean up worktree.
+		try {
+			const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
+			const worktreePath = childHistory.worktreePath
+			await this.updateTaskHistory({ ...childHistory, status: "completed", completionPayload: payload })
+			if (worktreePath) {
+				try {
+					await worktreeService.deleteWorktree(childHistory.workspace ?? this.cwd, worktreePath)
+					TelemetryService.instance.captureWorktreeDeleted(childTaskId, worktreePath)
+				} catch {
+					// non-fatal
+				}
+			}
+		} catch {
+			// non-fatal
+		}
+
+		// Remove the child from the live task map but do NOT change focus
+		// (parent is still focused and running).
+		await this.removeClineFromStack({ taskId: childTaskId, skipDelegationRepair: true })
+
+		if (handler) {
+			if (failed) {
+				handler.reject(new Error(summary))
+			} else {
+				handler.resolve({ summary, payload })
+			}
+		}
+	}
+
+	/**
 	 * Scans task history for orphaned worktrees — directories that still exist on disk but whose
 	 * tasks are no longer running. This can happen if VS Code crashes mid-task.
 	 * Logs findings and emits telemetry; offers optional VS Code notification for cleanup.
@@ -3791,7 +4081,7 @@ export class ClineProvider
 	public async detectAndCleanOrphanedWorktrees(): Promise<void> {
 		try {
 			const allHistory = this.taskHistoryStore.getAll()
-			const activeTaskIds = new Set(this.clineStack.map((t) => t.taskId))
+			const activeTaskIds = new Set(this.tasks.keys())
 			const orphans: Array<{ taskId: string; worktreePath: string }> = []
 
 			for (const item of allHistory) {
